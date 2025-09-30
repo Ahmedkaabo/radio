@@ -87,7 +87,7 @@ export default function CafePlayer() {
       try {
         loadedTracks = await RadioCafeService.getReadyTracks()
         console.log('🎵 Loaded ready tracks from database:', loadedTracks.length, loadedTracks)
-      } catch (error) {
+      } catch {
         console.log('🎵 Falling back to localStorage (no database connection)')
         // Fallback to localStorage if Supabase not available - but it will be empty initially
         const { HybridStorage } = await import('@/lib/hybrid-storage')
