@@ -26,23 +26,23 @@ import type { Track } from '@/lib/supabase'
 export default function CafePlayer() {
   // Helper: get cached audio URL or fetch and cache
   const getCachedAudioUrl = useCallback(async (track: Track): Promise<string> => {
-    if (!track.audio_file_url) return ''
+    if (!track.mp3_file_url) return ''
     const cacheName = 'radio-cafe-audio-cache'
     const cache = await caches.open(cacheName)
-    const cachedResponse = await cache.match(track.audio_file_url)
+    const cachedResponse = await cache.match(track.mp3_file_url)
     if (cachedResponse) {
       // Return object URL from cached response
       const blob = await cachedResponse.blob()
       return URL.createObjectURL(blob)
     } else {
       // Fetch and cache
-      const response = await fetch(track.audio_file_url)
+      const response = await fetch(track.mp3_file_url)
       if (response.ok) {
-        await cache.put(track.audio_file_url, response.clone())
+        await cache.put(track.mp3_file_url, response.clone())
         const blob = await response.blob()
         return URL.createObjectURL(blob)
       } else {
-        return track.audio_file_url
+        return track.mp3_file_url
       }
     }
   }, [])
@@ -61,24 +61,16 @@ export default function CafePlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const router = useRouter()
 
-  // Check authentication and initialize hybrid storage
+  // Check authentication
   useEffect(() => {
-    const init = async () => {
-      // Only run on client side
-      if (typeof window === 'undefined') return
-      
-      const userRole = localStorage.getItem('userRole')
-      if (userRole !== 'cafe') {
-        router.push('/login')
-        return
-      }
-      
-      // Initialize hybrid storage with dynamic import
-      const { HybridStorage } = await import('@/lib/hybrid-storage')
-      await HybridStorage.init()
-    }
+    // Only run on client side
+    if (typeof window === 'undefined') return
     
-    init()
+    const userRole = localStorage.getItem('userRole')
+    if (userRole !== 'cafe') {
+      router.push('/login')
+      return
+    }
   }, [router])
 
   // Load playable tracks
@@ -87,18 +79,11 @@ export default function CafePlayer() {
     if (typeof window === 'undefined') return
     
     setIsLoading(true)
-    console.log('🎵 Loading tracks...')
+    console.log('🎵 Loading ready tracks...')
     try {
-      // Use HybridStorage to get tracks (falls back to localStorage if Supabase not available)
-      const { HybridStorage } = await import('@/lib/hybrid-storage')
-      const allTracks = await HybridStorage.getTracks()
-      console.log('🎵 All tracks from HybridStorage:', allTracks.length, allTracks)
-      
-      // Filter for playable tracks (those with completed downloads)
-      const loadedTracks = allTracks.filter((track: Track) => 
-        track.download_status === 'completed' && track.audio_file_url !== null && track.audio_file_url !== undefined
-      )
-      console.log('🎵 Filtered playable tracks:', loadedTracks.length, loadedTracks)
+      // Get ready tracks directly (already filtered for status='ready' and mp3_file_url exists)
+      const loadedTracks = await RadioCafeService.getReadyTracks()
+      console.log('🎵 Loaded ready tracks:', loadedTracks.length, loadedTracks)
       setTracks(loadedTracks)
       
       if (loadedTracks.length > 0) {
@@ -367,7 +352,7 @@ export default function CafePlayer() {
                           {currentTrack.file_size && (
                             <span>{RadioCafeService.formatFileSize(currentTrack.file_size)}</span>
                           )}
-                          <span className="capitalize">{currentTrack.audio_format || 'M4A'}</span>
+                          <span className="capitalize">MP3</span>
                         </div>
                       </div>
                     </div>

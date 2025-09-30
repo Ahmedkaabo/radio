@@ -1,4 +1,4 @@
-import { TrackStorage } from './storage'
+import { TrackStorage, type LocalTrack } from './storage'
 import { SupabaseService } from './supabase-service'
 import { createClient } from './supabase'
 import type { Track } from './supabase'
@@ -82,11 +82,10 @@ export class HybridStorage {
         youtube_video_id: SupabaseService.extractVideoId(track.youtubeUrl),
         thumbnail_url: track.thumbnail || SupabaseService.generateThumbnail(track.youtubeUrl),
         duration: null,
-        audio_file_url: track.audioFileUrl || null,
-        audio_file_path: track.audioFilePath || null,
-        download_status: (track.downloadStatus as 'pending' | 'downloading' | 'completed' | 'failed') || 'pending',
+        mp3_file_url: track.mp3FileUrl || null,
         file_size: track.fileSize || null,
-        audio_format: track.audioFormat || null,
+        status: (track.status as 'pending' | 'processing' | 'ready' | 'failed') || 'pending',
+        error_message: null,
         created_at: track.addedAt,
         updated_at: track.addedAt
       }))
@@ -128,11 +127,10 @@ export class HybridStorage {
         youtube_video_id: SupabaseService.extractVideoId(track.youtube_url),
         thumbnail_url: localTrack.thumbnail,
         duration: null,
-        audio_file_url: null,
-        audio_file_path: null,
-        download_status: 'pending',
+        mp3_file_url: null,
         file_size: null,
-        audio_format: null,
+        status: 'pending',
+        error_message: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }
@@ -203,12 +201,10 @@ export class HybridStorage {
   }
 
   // Get download status for a track (only available in Supabase mode)
-  static async getTrackDownloadStatus(id: string): Promise<{
-    status: 'pending' | 'downloading' | 'completed' | 'failed'
+  static async getTrackStatus(id: string): Promise<{
+    status: 'pending' | 'processing' | 'ready' | 'failed'
     audioFileUrl?: string
-    audioFilePath?: string
     fileSize?: number
-    audioFormat?: string
   } | null> {
     if (!this.useSupabase) {
       // In localStorage mode, no downloads available
@@ -220,11 +216,9 @@ export class HybridStorage {
     if (!track) return null
     
     return {
-      status: track.download_status || 'pending',
-      audioFileUrl: track.audio_file_url || undefined,
-      audioFilePath: track.audio_file_path || undefined,
-      fileSize: track.file_size || undefined,
-      audioFormat: track.audio_format || undefined
+      status: track.status || 'pending',
+      audioFileUrl: track.mp3_file_url || undefined,
+      fileSize: track.file_size || undefined
     }
   }
 

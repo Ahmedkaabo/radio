@@ -18,11 +18,10 @@ export type Track = {
   youtube_video_id?: string | null
   thumbnail_url?: string | null
   duration?: number | null
-  audio_file_url?: string | null
-  audio_file_path?: string | null
-  download_status: 'pending' | 'downloading' | 'completed' | 'failed'
+  mp3_file_url?: string | null
   file_size?: number | null
-  audio_format?: string | null
+  status: 'pending' | 'processing' | 'ready' | 'failed'
+  error_message?: string | null
   created_at: string
   updated_at: string
 }

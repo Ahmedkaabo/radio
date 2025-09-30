@@ -1,25 +1,22 @@
 // Mock data storage using localStorage
-export type Track = {
+export type LocalTrack = {
   id: string
   title: string
   artist: string
   youtubeUrl: string
-  audioUrl?: string
   thumbnail?: string
   duration?: string
   addedAt: string
-  // Download-related fields
-  audioFileUrl?: string
-  audioFilePath?: string
-  downloadStatus?: 'pending' | 'downloading' | 'completed' | 'failed'
+  // Simplified fields for MP3 conversion
+  mp3FileUrl?: string
   fileSize?: number
-  audioFormat?: string
+  status?: 'pending' | 'processing' | 'ready' | 'failed'
 }
 
 const STORAGE_KEY = 'radio_cafe_tracks'
 
-// Default tracks for demo (marked as completed downloads so they appear in cafe)
-const defaultTracks: Track[] = [
+// Default tracks for demo (marked as ready so they appear in cafe)
+const defaultTracks: LocalTrack[] = [
   {
     id: '1',
     title: 'Smooth Jazz Cafe',
@@ -28,12 +25,10 @@ const defaultTracks: Track[] = [
     thumbnail: 'https://via.placeholder.com/300x300/6366f1/white?text=Jazz',
     duration: '3:24',
     addedAt: new Date().toISOString(),
-    // Add download-related fields so these appear as playable tracks
-    downloadStatus: 'completed',
-    audioFileUrl: '/downloads/demo-smooth-jazz-cafe.m4a',
-    audioFilePath: '/public/downloads/demo-smooth-jazz-cafe.m4a',
-    fileSize: 5242880, // 5MB
-    audioFormat: 'm4a'
+    // Simplified fields for ready tracks
+    status: 'ready',
+    mp3FileUrl: '/api/stream/demo1.mp3',
+    fileSize: 5242880 // 5MB
   },
   {
     id: '2',
@@ -43,12 +38,10 @@ const defaultTracks: Track[] = [
     thumbnail: 'https://via.placeholder.com/300x300/8b5cf6/white?text=Ambient',
     duration: '4:12',
     addedAt: new Date().toISOString(),
-    // Add download-related fields so these appear as playable tracks
-    downloadStatus: 'completed',
-    audioFileUrl: '/downloads/demo-ambient-lounge.m4a',
-    audioFilePath: '/public/downloads/demo-ambient-lounge.m4a',
-    fileSize: 6815744, // 6.5MB
-    audioFormat: 'm4a'
+    // Simplified fields for ready tracks
+    status: 'ready',
+    mp3FileUrl: '/api/stream/demo2.mp3',
+    fileSize: 6815744 // 6.5MB
   },
   {
     id: '3',
@@ -58,17 +51,15 @@ const defaultTracks: Track[] = [
     thumbnail: 'https://via.placeholder.com/300x300/a855f7/white?text=Bossa',
     duration: '2:58',
     addedAt: new Date().toISOString(),
-    // Add download-related fields so these appear as playable tracks
-    downloadStatus: 'completed',
-    audioFileUrl: '/downloads/demo-bossa-nova-dreams.m4a',
-    audioFilePath: '/public/downloads/demo-bossa-nova-dreams.m4a',
-    fileSize: 4194304, // 4MB
-    audioFormat: 'm4a'
+    // Simplified fields for ready tracks
+    status: 'ready',
+    mp3FileUrl: '/api/stream/demo3.mp3',
+    fileSize: 4194304 // 4MB
   }
 ]
 
 export class TrackStorage {
-  static getTracks(): Track[] {
+  static getTracks(): LocalTrack[] {
     if (typeof window === 'undefined') return defaultTracks
     
     try {
@@ -85,7 +76,7 @@ export class TrackStorage {
     return defaultTracks
   }
 
-  static setTracks(tracks: Track[]): void {
+  static setTracks(tracks: LocalTrack[]): void {
     if (typeof window === 'undefined') return
     
     try {
@@ -95,8 +86,8 @@ export class TrackStorage {
     }
   }
 
-  static addTrack(track: Omit<Track, 'id' | 'addedAt'>): Track {
-    const newTrack: Track = {
+  static addTrack(track: Omit<LocalTrack, 'id' | 'addedAt'>): LocalTrack {
+    const newTrack: LocalTrack = {
       ...track,
       id: Date.now().toString(),
       addedAt: new Date().toISOString()
@@ -109,7 +100,7 @@ export class TrackStorage {
     return newTrack
   }
 
-  static updateTrack(id: string, updates: Partial<Track>): boolean {
+  static updateTrack(id: string, updates: Partial<LocalTrack>): boolean {
     const tracks = this.getTracks()
     const index = tracks.findIndex(track => track.id === id)
     
@@ -131,7 +122,7 @@ export class TrackStorage {
     return true
   }
 
-  static getTrack(id: string): Track | null {
+  static getTrack(id: string): LocalTrack | null {
     const tracks = this.getTracks()
     return tracks.find(track => track.id === id) || null
   }

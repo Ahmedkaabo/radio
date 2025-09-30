@@ -11,7 +11,7 @@ export function createClient() {
   return createBrowserClient(supabaseUrl, supabaseAnonKey)
 }
 
-// TypeScript types matching our clean schema
+// TypeScript types matching our simplified schema
 export type Track = {
   id: string
   title: string
@@ -20,11 +20,9 @@ export type Track = {
   youtube_video_id?: string | null
   thumbnail_url?: string | null
   duration?: number | null
-  audio_file_url?: string | null
-  audio_file_path?: string | null
-  download_status: 'pending' | 'downloading' | 'completed' | 'failed'
+  mp3_file_url?: string | null
   file_size?: number | null
-  audio_format?: string | null
+  status: 'pending' | 'processing' | 'ready' | 'failed'
   error_message?: string | null
   created_at: string
   updated_at: string
@@ -84,23 +82,23 @@ export class RadioCafeService {
     return data || []
   }
 
-  static async getPlayableTracks(): Promise<Track[]> {
+  static async getReadyTracks(): Promise<Track[]> {
     const supabase = createClient()
     
-    console.log('🔍 Querying playable tracks...')
+    console.log('🔍 Querying ready tracks...')
     const { data, error } = await supabase
       .from('tracks')
       .select('*')
-      .eq('download_status', 'completed')
-      .not('audio_file_url', 'is', null)
+      .eq('status', 'ready')
+      .not('mp3_file_url', 'is', null)
       .order('created_at', { ascending: false })
     
     if (error) {
-      console.error('❌ Error fetching playable tracks:', error)
+      console.error('❌ Error fetching ready tracks:', error)
       return []
     }
     
-    console.log('✅ Found playable tracks:', data?.length || 0, data)
+    console.log('✅ Found ready tracks:', data?.length || 0, data)
     return data || []
   }
 
