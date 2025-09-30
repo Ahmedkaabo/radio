@@ -21,7 +21,6 @@ import {
   Download
 } from 'lucide-react'
 import { RadioCafeService } from '@/lib/radio-cafe-service'
-import { HybridStorage } from '@/lib/hybrid-storage'
 import type { Track } from '@/lib/supabase'
 
 export default function CafePlayer() {
@@ -74,7 +73,8 @@ export default function CafePlayer() {
         return
       }
       
-      // Initialize hybrid storage
+      // Initialize hybrid storage with dynamic import
+      const { HybridStorage } = await import('@/lib/hybrid-storage')
       await HybridStorage.init()
     }
     
@@ -83,15 +83,19 @@ export default function CafePlayer() {
 
   // Load playable tracks
   const loadTracks = useCallback(async () => {
+    // Only run on client side
+    if (typeof window === 'undefined') return
+    
     setIsLoading(true)
     console.log('🎵 Loading tracks...')
     try {
       // Use HybridStorage to get tracks (falls back to localStorage if Supabase not available)
+      const { HybridStorage } = await import('@/lib/hybrid-storage')
       const allTracks = await HybridStorage.getTracks()
       console.log('🎵 All tracks from HybridStorage:', allTracks.length, allTracks)
       
       // Filter for playable tracks (those with completed downloads)
-      const loadedTracks = allTracks.filter(track => 
+      const loadedTracks = allTracks.filter((track: Track) => 
         track.download_status === 'completed' && track.audio_file_url !== null && track.audio_file_url !== undefined
       )
       console.log('🎵 Filtered playable tracks:', loadedTracks.length, loadedTracks)
@@ -106,7 +110,7 @@ export default function CafePlayer() {
         
         // Update play queue
         if (!shuffle) {
-          setPlayQueue(loadedTracks.map((_, index) => index))
+          setPlayQueue(loadedTracks.map((_: Track, index: number) => index))
         }
       } else {
         console.log('🎵 No playable tracks found - playlist will be empty')
@@ -186,7 +190,7 @@ export default function CafePlayer() {
 
   // Generate shuffled play queue
   const shuffleQueue = useCallback(() => {
-    const indices = tracks.map((_, index: number) => index)
+    const indices = tracks.map((_: Track, index: number) => index)
     for (let i = indices.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [indices[i], indices[j]] = [indices[j], indices[i]]
@@ -200,7 +204,7 @@ export default function CafePlayer() {
       if (shuffle) {
         setPlayQueue(shuffleQueue())
       } else {
-        setPlayQueue(tracks.map((_, index: number) => index))
+        setPlayQueue(tracks.map((_: Track, index: number) => index))
       }
     }
   }, [shuffle, shuffleQueue, tracks])
