@@ -20,8 +20,9 @@ import {
   Loader2,
   Download
 } from 'lucide-react'
-import { RadioCafeService, type Track } from '@/lib/radio-cafe-service'
+import { RadioCafeService } from '@/lib/radio-cafe-service'
 import { HybridStorage } from '@/lib/hybrid-storage'
+import type { Track } from '@/lib/supabase'
 
 export default function CafePlayer() {
   // Helper: get cached audio URL or fetch and cache
@@ -88,7 +89,7 @@ export default function CafePlayer() {
       
       // Filter for playable tracks (those with completed downloads)
       const loadedTracks = allTracks.filter(track => 
-        track.download_status === 'completed' && track.audio_file_url
+        track.download_status === 'completed' && track.audio_file_url !== null && track.audio_file_url !== undefined
       )
       console.log('🎵 Filtered playable tracks:', loadedTracks.length, loadedTracks)
       setTracks(loadedTracks)
@@ -182,7 +183,7 @@ export default function CafePlayer() {
 
   // Generate shuffled play queue
   const shuffleQueue = useCallback(() => {
-    const indices = tracks.map((_, index) => index)
+    const indices = tracks.map((_, index: number) => index)
     for (let i = indices.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [indices[i], indices[j]] = [indices[j], indices[i]]
@@ -196,7 +197,7 @@ export default function CafePlayer() {
       if (shuffle) {
         setPlayQueue(shuffleQueue())
       } else {
-        setPlayQueue(tracks.map((_, index) => index))
+        setPlayQueue(tracks.map((_, index: number) => index))
       }
     }
   }, [shuffle, shuffleQueue, tracks])

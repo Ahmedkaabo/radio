@@ -17,7 +17,7 @@ export type Track = {
   duration?: number | null
   audio_file_url?: string | null
   audio_file_path?: string | null
-  download_status?: 'pending' | 'downloading' | 'completed' | 'failed'
+  download_status: 'pending' | 'downloading' | 'completed' | 'failed'
   file_size?: number | null
   audio_format?: string | null
   created_at: string

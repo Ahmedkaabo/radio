@@ -29,7 +29,7 @@ export class HybridStorage {
               console.log('🔄 Cleared outdated localStorage to refresh with playable demo tracks')
             }
           }
-        } catch (error) {
+        } catch {
           console.log('🔄 Clearing corrupted localStorage')
           localStorage.removeItem('radio_cafe_tracks')
         }
@@ -82,7 +82,7 @@ export class HybridStorage {
         duration: null,
         audio_file_url: track.audioFileUrl || null,
         audio_file_path: track.audioFilePath || null,
-        download_status: track.downloadStatus || 'pending',
+        download_status: (track.downloadStatus as 'pending' | 'downloading' | 'completed' | 'failed') || 'pending',
         file_size: track.fileSize || null,
         audio_format: track.audioFormat || null,
         created_at: track.addedAt,
@@ -126,6 +126,11 @@ export class HybridStorage {
         youtube_video_id: SupabaseService.extractVideoId(track.youtube_url),
         thumbnail_url: localTrack.thumbnail,
         duration: null,
+        audio_file_url: null,
+        audio_file_path: null,
+        download_status: 'pending',
+        file_size: null,
+        audio_format: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }
