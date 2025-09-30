@@ -84,6 +84,7 @@ export class RadioCafeService {
   static async getPlayableTracks(): Promise<Track[]> {
     const supabase = createClient()
     
+    console.log('🔍 Querying playable tracks...')
     const { data, error } = await supabase
       .from('tracks')
       .select('*')
@@ -92,10 +93,11 @@ export class RadioCafeService {
       .order('created_at', { ascending: false })
     
     if (error) {
-      console.error('Error fetching playable tracks:', error)
+      console.error('❌ Error fetching playable tracks:', error)
       return []
     }
     
+    console.log('✅ Found playable tracks:', data?.length || 0, data)
     return data || []
   }
 

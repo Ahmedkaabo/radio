@@ -18,7 +18,7 @@ export type Track = {
 
 const STORAGE_KEY = 'radio_cafe_tracks'
 
-// Default tracks for demo
+// Default tracks for demo (marked as completed downloads so they appear in cafe)
 const defaultTracks: Track[] = [
   {
     id: '1',
@@ -27,7 +27,13 @@ const defaultTracks: Track[] = [
     youtubeUrl: 'https://youtube.com/watch?v=demo1',
     thumbnail: 'https://via.placeholder.com/300x300/6366f1/white?text=Jazz',
     duration: '3:24',
-    addedAt: new Date().toISOString()
+    addedAt: new Date().toISOString(),
+    // Add download-related fields so these appear as playable tracks
+    downloadStatus: 'completed',
+    audioFileUrl: '/downloads/demo-smooth-jazz-cafe.m4a',
+    audioFilePath: '/public/downloads/demo-smooth-jazz-cafe.m4a',
+    fileSize: 5242880, // 5MB
+    audioFormat: 'm4a'
   },
   {
     id: '2',
@@ -36,7 +42,13 @@ const defaultTracks: Track[] = [
     youtubeUrl: 'https://youtube.com/watch?v=demo2',
     thumbnail: 'https://via.placeholder.com/300x300/8b5cf6/white?text=Ambient',
     duration: '4:12',
-    addedAt: new Date().toISOString()
+    addedAt: new Date().toISOString(),
+    // Add download-related fields so these appear as playable tracks
+    downloadStatus: 'completed',
+    audioFileUrl: '/downloads/demo-ambient-lounge.m4a',
+    audioFilePath: '/public/downloads/demo-ambient-lounge.m4a',
+    fileSize: 6815744, // 6.5MB
+    audioFormat: 'm4a'
   },
   {
     id: '3',
@@ -45,7 +57,13 @@ const defaultTracks: Track[] = [
     youtubeUrl: 'https://youtube.com/watch?v=demo3',
     thumbnail: 'https://via.placeholder.com/300x300/a855f7/white?text=Bossa',
     duration: '2:58',
-    addedAt: new Date().toISOString()
+    addedAt: new Date().toISOString(),
+    // Add download-related fields so these appear as playable tracks
+    downloadStatus: 'completed',
+    audioFileUrl: '/downloads/demo-bossa-nova-dreams.m4a',
+    audioFilePath: '/public/downloads/demo-bossa-nova-dreams.m4a',
+    fileSize: 4194304, // 4MB
+    audioFormat: 'm4a'
   }
 ]
 

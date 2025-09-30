@@ -21,6 +21,7 @@ import {
   Download
 } from 'lucide-react'
 import { RadioCafeService, type Track } from '@/lib/radio-cafe-service'
+import { HybridStorage } from '@/lib/hybrid-storage'
 
 export default function CafePlayer() {
   // Helper: get cached audio URL or fetch and cache
@@ -60,35 +61,54 @@ export default function CafePlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const router = useRouter()
 
-  // Check authentication
+  // Check authentication and initialize hybrid storage
   useEffect(() => {
-    const userRole = localStorage.getItem('userRole')
-    if (userRole !== 'cafe') {
-      router.push('/login')
-      return
+    const init = async () => {
+      const userRole = localStorage.getItem('userRole')
+      if (userRole !== 'cafe') {
+        router.push('/login')
+        return
+      }
+      
+      // Initialize hybrid storage
+      await HybridStorage.init()
     }
+    
+    init()
   }, [router])
 
   // Load playable tracks
   const loadTracks = useCallback(async () => {
     setIsLoading(true)
+    console.log('🎵 Loading tracks...')
     try {
-      const loadedTracks = await RadioCafeService.getPlayableTracks()
+      // Use HybridStorage to get tracks (falls back to localStorage if Supabase not available)
+      const allTracks = await HybridStorage.getTracks()
+      console.log('🎵 All tracks from HybridStorage:', allTracks.length, allTracks)
+      
+      // Filter for playable tracks (those with completed downloads)
+      const loadedTracks = allTracks.filter(track => 
+        track.download_status === 'completed' && track.audio_file_url
+      )
+      console.log('🎵 Filtered playable tracks:', loadedTracks.length, loadedTracks)
       setTracks(loadedTracks)
       
       if (loadedTracks.length > 0) {
         if (!currentTrack) {
           setCurrentTrack(loadedTracks[0])
           setCurrentTrackIndex(0)
+          console.log('🎵 Set current track:', loadedTracks[0])
         }
         
         // Update play queue
         if (!shuffle) {
           setPlayQueue(loadedTracks.map((_, index) => index))
         }
+      } else {
+        console.log('🎵 No playable tracks found - playlist will be empty')
       }
     } catch (error) {
-      console.error('Failed to load tracks:', error)
+      console.error('❌ Failed to load tracks:', error)
     } finally {
       setIsLoading(false)
     }

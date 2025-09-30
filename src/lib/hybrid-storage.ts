@@ -16,6 +16,24 @@ export class HybridStorage {
     if (isDevelopment) {
       this.useSupabase = false
       console.log('🏠 Using localStorage mode - Development environment detected')
+      
+      // Check if localStorage tracks need updating (missing download fields)
+      if (typeof window !== 'undefined') {
+        try {
+          const stored = localStorage.getItem('radio_cafe_tracks')
+          if (stored) {
+            const tracks = JSON.parse(stored)
+            // Check if tracks have download status - if not, clear to get updated defaults
+            if (tracks.length > 0 && !tracks[0].downloadStatus) {
+              localStorage.removeItem('radio_cafe_tracks')
+              console.log('🔄 Cleared outdated localStorage to refresh with playable demo tracks')
+            }
+          }
+        } catch (error) {
+          console.log('🔄 Clearing corrupted localStorage')
+          localStorage.removeItem('radio_cafe_tracks')
+        }
+      }
       return
     }
 
@@ -46,11 +64,15 @@ export class HybridStorage {
   // Track operations
   static async getTracks(): Promise<Track[]> {
     if (this.useSupabase) {
+      console.log('📡 Fetching tracks from Supabase...')
       return await SupabaseService.getTracks()
     } else {
+      console.log('💾 Fetching tracks from localStorage...')
       const localTracks = TrackStorage.getTracks()
+      console.log('💾 Raw localStorage tracks:', localTracks)
+      
       // Convert localStorage format to Supabase format
-      return localTracks.map(track => ({
+      const convertedTracks = localTracks.map(track => ({
         id: track.id,
         title: track.title,
         artist: track.artist,
@@ -66,6 +88,9 @@ export class HybridStorage {
         created_at: track.addedAt,
         updated_at: track.addedAt
       }))
+      
+      console.log('💾 Converted tracks for cafe:', convertedTracks)
+      return convertedTracks
     }
   }
 
