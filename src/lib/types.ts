@@ -1,11 +1,16 @@
 // Fresh, minimal types for Radio Cafe
-export type Track = {
+export interface Track {
   id: string
   title: string
   artist: string
   youtube_url: string
-  youtube_video_id: string | null
-  thumbnail_url: string | null
+  youtube_video_id?: string
+  thumbnail_url?: string
+  mp3_file_path?: string
+  conversion_status: 'pending' | 'processing' | 'completed' | 'error'
+  file_size?: number
+  duration?: number
+  error_message?: string
   created_at: string
   updated_at: string
 }

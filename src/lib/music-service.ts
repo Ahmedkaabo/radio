@@ -42,36 +42,79 @@ export class MusicService {
   }
 
   // Add track (admin only)
-  static async addTrack(track: { title: string; artist: string; youtube_url: string }): Promise<Track | null> {
+  static async addTrack(trackData: { title: string; artist: string; youtube_url: string }): Promise<Track> {
     try {
       const supabase = createClient()
+      
       const { data, error } = await supabase
         .from('tracks')
-        .insert([track])
+        .insert([{
+          ...trackData,
+          conversion_status: 'pending'
+        }])
         .select()
         .single()
-      
-      if (error) throw error
-      return data
-    } catch {
-      // Fallback to localStorage
-      const newTrack: Track = {
-        id: Date.now().toString(),
-        ...track,
-        youtube_video_id: this.extractVideoId(track.youtube_url),
-        thumbnail_url: this.generateThumbnail(track.youtube_url),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+
+      if (error) {
+        console.error('Supabase error:', error)
+        // Fallback to localStorage
+        const newTrack: Track = {
+          id: Math.random().toString(36).substr(2, 9),
+          ...trackData,
+          conversion_status: 'pending' as const,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+        
+        const existingTracks = JSON.parse(localStorage.getItem('radio_cafe_tracks') || '[]')
+        const updatedTracks = [newTrack, ...existingTracks]
+        localStorage.setItem('radio_cafe_tracks', JSON.stringify(updatedTracks))
+        
+        // Trigger MP3 conversion in background
+        this.convertToMp3(newTrack.id)
+        
+        return newTrack
       }
-      
-      const tracks = await this.getAllTracks()
-      tracks.unshift(newTrack)
-      localStorage.setItem('radio_cafe_tracks', JSON.stringify(tracks))
-      return newTrack
+
+      // Trigger MP3 conversion in background
+      this.convertToMp3(data.id)
+
+      return data
+    } catch (error) {
+      console.error('Error adding track:', error)
+      throw error
     }
   }
 
-  // Update track (admin only)
+  static async convertToMp3(trackId: string): Promise<void> {
+    try {
+      const response = await fetch('/api/convert-mp3', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ trackId }),
+      })
+
+      if (!response.ok) {
+        console.error('Conversion failed:', await response.text())
+      }
+    } catch (error) {
+      console.error('Error triggering conversion:', error)
+    }
+  }
+
+  static async getConversionStatus(trackId: string): Promise<Track | null> {
+    try {
+      const response = await fetch(`/api/conversion-status?trackId=${trackId}`)
+      if (response.ok) {
+        return await response.json()
+      }
+    } catch (error) {
+      console.error('Error checking status:', error)
+    }
+    return null
+  }  // Update track (admin only)
   static async updateTrack(id: string, updates: { title?: string; artist?: string; youtube_url?: string }): Promise<boolean> {
     try {
       const supabase = createClient()

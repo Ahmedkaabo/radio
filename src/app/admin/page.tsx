@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Trash2, Edit2, LogOut, Save, X } from 'lucide-react'
+import { Plus, Trash2, Edit2, LogOut, Save, X, Download, CheckCircle, AlertCircle, Clock } from 'lucide-react'
 import { MusicService } from '@/lib/music-service'
 import type { Track } from '@/lib/types'
 
@@ -32,6 +32,9 @@ export default function AdminPage() {
     }
   }
 
+  // Polling for conversion status updates
+  const pollingRef = useRef<NodeJS.Timeout | null>(null)
+
   useEffect(() => {
     const userRole = localStorage.getItem('userRole')
     if (userRole !== 'admin') {
@@ -39,6 +42,15 @@ export default function AdminPage() {
       return
     }
     loadTracks()
+
+    // Start polling for conversion updates
+    pollingRef.current = setInterval(loadTracks, 5000)
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+      }
+    }
   }, [router])
 
   const handleAddTrack = async () => {
@@ -170,6 +182,7 @@ export default function AdminPage() {
                   <TableRow>
                     <TableHead>Song</TableHead>
                     <TableHead>YouTube</TableHead>
+                    <TableHead>MP3 Status</TableHead>
                     <TableHead>Added</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -212,6 +225,48 @@ export default function AdminPage() {
                             ID: {track.youtube_video_id}
                           </div>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          {track.conversion_status === 'pending' && (
+                            <>
+                              <Clock className="h-4 w-4 text-yellow-500" />
+                              <span className="text-sm text-yellow-600">Pending</span>
+                            </>
+                          )}
+                          {track.conversion_status === 'processing' && (
+                            <>
+                              <Download className="h-4 w-4 text-blue-500 animate-pulse" />
+                              <span className="text-sm text-blue-600">Converting...</span>
+                            </>
+                          )}
+                          {track.conversion_status === 'completed' && (
+                            <>
+                              <CheckCircle className="h-4 w-4 text-green-500" />
+                              <div className="text-sm">
+                                <div className="text-green-600">Ready</div>
+                                {track.file_size && (
+                                  <div className="text-xs text-gray-400">
+                                    {Math.round(track.file_size / 1024 / 1024 * 100) / 100} MB
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          )}
+                          {track.conversion_status === 'error' && (
+                            <>
+                              <AlertCircle className="h-4 w-4 text-red-500" />
+                              <div className="text-sm">
+                                <div className="text-red-600">Error</div>
+                                {track.error_message && (
+                                  <div className="text-xs text-gray-400 max-w-32 truncate" title={track.error_message}>
+                                    {track.error_message}
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm text-gray-500">

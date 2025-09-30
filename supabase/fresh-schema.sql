@@ -34,6 +34,11 @@ CREATE TABLE tracks (
       ELSE 'https://via.placeholder.com/480x360/6366f1/white?text=Music'
     END
   ) STORED,
+  mp3_file_path TEXT,
+  conversion_status TEXT DEFAULT 'pending' CHECK (conversion_status IN ('pending', 'processing', 'completed', 'error')),
+  file_size BIGINT,
+  duration INTEGER,
+  error_message TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
