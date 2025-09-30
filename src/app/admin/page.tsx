@@ -321,9 +321,7 @@ export default function AdminDashboard() {
                           {track.duration && (
                             <div>Duration: {RadioCafeService.formatDuration(track.duration)}</div>
                           )}
-                          {track.audio_format && (
-                            <div>Format: {track.audio_format}</div>
-                          )}
+                          <div>Format: MP3</div>
                         </div>
                       </TableCell>
 

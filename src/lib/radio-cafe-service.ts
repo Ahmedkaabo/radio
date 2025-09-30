@@ -244,7 +244,7 @@ export class RadioCafeService {
         return { success: false, error: 'Track not found' }
       }
 
-      if (track.download_status !== 'pending') {
+      if (track.status !== 'pending') {
         return { success: false, error: 'Track is not in pending status' }
       }
 
