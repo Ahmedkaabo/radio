@@ -1,5 +1,6 @@
 import { TrackStorage } from './storage'
 import { SupabaseService } from './supabase-service'
+import { createClient } from './supabase'
 import type { Track } from './supabase'
 
 // Hybrid storage service that works with both Supabase and localStorage
@@ -38,13 +39,14 @@ export class HybridStorage {
     }
 
     try {
-      // Try to fetch tracks from Supabase to test connection
-      await SupabaseService.getTracks()
+      // Try to create Supabase client and fetch tracks to test connection
+      const supabase = createClient()
+      await supabase.from('tracks').select('count').limit(1)
       this.useSupabase = true
       console.log('✅ Supabase connection established - Production mode')
-    } catch {
+    } catch (error) {
       this.useSupabase = false
-      console.log('📦 Using localStorage mode - Supabase not available')
+      console.log('📦 Using localStorage mode - Supabase not available:', error instanceof Error ? error.message : 'Unknown error')
     }
   }
 

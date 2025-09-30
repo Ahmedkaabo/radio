@@ -65,6 +65,9 @@ export default function CafePlayer() {
   // Check authentication and initialize hybrid storage
   useEffect(() => {
     const init = async () => {
+      // Only run on client side
+      if (typeof window === 'undefined') return
+      
       const userRole = localStorage.getItem('userRole')
       if (userRole !== 'cafe') {
         router.push('/login')
