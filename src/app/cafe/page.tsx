@@ -1,287 +1,66 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { 
-  Play, 
-  Pause, 
-  SkipForward, 
-  SkipBack, 
-  Volume2, 
-  LogOut, 
-  Shuffle,
-  Repeat,
-  Music,
-  Coffee,
-  Loader2,
-  Download
-} from 'lucide-react'
-import { RadioCafeService } from '@/lib/radio-cafe-service'
-import type { Track } from '@/lib/supabase'
+import { Play, Pause, SkipForward, SkipBack, Volume2, LogOut } from 'lucide-react'
+import { MusicService } from '@/lib/music-service'
+import type { Track } from '@/lib/types'
 
-export default function CafePlayer() {
-  // Helper: get cached audio URL or fetch and cache
-  const getCachedAudioUrl = useCallback(async (track: Track): Promise<string> => {
-    if (!track.mp3_file_url) return ''
-    const cacheName = 'radio-cafe-audio-cache'
-    const cache = await caches.open(cacheName)
-    const cachedResponse = await cache.match(track.mp3_file_url)
-    if (cachedResponse) {
-      // Return object URL from cached response
-      const blob = await cachedResponse.blob()
-      return URL.createObjectURL(blob)
-    } else {
-      // Fetch and cache
-      const response = await fetch(track.mp3_file_url)
-      if (response.ok) {
-        await cache.put(track.mp3_file_url, response.clone())
-        const blob = await response.blob()
-        return URL.createObjectURL(blob)
-      } else {
-        return track.mp3_file_url
-      }
-    }
-  }, [])
+export default function CafePage() {
+  const router = useRouter()
   const [tracks, setTracks] = useState<Track[]>([])
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null)
-  const [currentTrackIndex, setCurrentTrackIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [volume, setVolume] = useState(70)
-  const [shuffle, setShuffle] = useState(false)
-  const [repeat, setRepeat] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [playQueue, setPlayQueue] = useState<number[]>([])
-  
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const router = useRouter()
+  const [volume, setVolume] = useState([70])
 
-  // Check authentication
+  const loadTracks = async () => {
+    try {
+      const data = await MusicService.getAllTracks()
+      setTracks(data)
+    } catch (error) {
+      console.error('Error loading tracks:', error)
+    }
+  }
+
   useEffect(() => {
-    // Only run on client side
-    if (typeof window === 'undefined') return
-    
     const userRole = localStorage.getItem('userRole')
     if (userRole !== 'cafe') {
       router.push('/login')
       return
     }
+    loadTracks()
   }, [router])
 
-  // Load playable tracks
-  const loadTracks = useCallback(async () => {
-    // Only run on client side
-    if (typeof window === 'undefined') return
-    
-    setIsLoading(true)
-    console.log('🎵 Loading ready tracks...')
-    try {
-      let loadedTracks: Track[] = []
-      
-      // Get ready tracks from the same database that admin uses
-      try {
-        loadedTracks = await RadioCafeService.getReadyTracks()
-        console.log('🎵 Loaded ready tracks from database:', loadedTracks.length, loadedTracks)
-      } catch {
-        console.log('🎵 Falling back to localStorage (no database connection)')
-        // Fallback to localStorage if Supabase not available - but it will be empty initially
-        const { HybridStorage } = await import('@/lib/hybrid-storage')
-        await HybridStorage.init()
-        const allTracks = await HybridStorage.getTracks()
-        loadedTracks = allTracks.filter((track: Track) => 
-          track.status === 'ready' && track.mp3_file_url
-        )
-        console.log('🎵 Loaded ready tracks from localStorage:', loadedTracks.length)
-      }
-      
-      setTracks(loadedTracks)
-      
-      if (loadedTracks.length > 0) {
-        if (!currentTrack) {
-          setCurrentTrack(loadedTracks[0])
-          setCurrentTrackIndex(0)
-          console.log('🎵 Set current track:', loadedTracks[0])
-        }
-        
-        // Update play queue
-        if (!shuffle) {
-          setPlayQueue(loadedTracks.map((_: Track, index: number) => index))
-        }
-      } else {
-        console.log('🎵 No playable tracks found - playlist will be empty')
-      }
-    } catch (error) {
-      console.error('❌ Failed to load tracks:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [currentTrack, shuffle])
-
   useEffect(() => {
-    loadTracks()
-    // Refresh tracks every 30 seconds to check for new downloads
-    const interval = setInterval(loadTracks, 30000)
-    return () => clearInterval(interval)
-  }, [loadTracks])
-
-  // Initialize audio element
-  useEffect(() => {
-    const audio = new Audio()
-    audioRef.current = audio
-
-    // Audio event listeners
-    audio.addEventListener('loadedmetadata', () => {
-      setDuration(audio.duration)
-    })
-
-    audio.addEventListener('timeupdate', () => {
-      setCurrentTime(audio.currentTime)
-    })
-
-    audio.addEventListener('ended', () => {
-      // Use a function that calls the current handleNext to avoid dependency issue
-      if (tracks.length === 0) return
-
-      let nextIndex
-      if (repeat && tracks.length === 1) {
-        nextIndex = currentTrackIndex
-      } else {
-        const currentQueuePosition = playQueue.indexOf(currentTrackIndex)
-        const nextQueuePosition = (currentQueuePosition + 1) % playQueue.length
-        nextIndex = playQueue[nextQueuePosition]
-      }
-
-      setCurrentTrackIndex(nextIndex)
-      setCurrentTrack(tracks[nextIndex])
-    })
-
-    audio.addEventListener('error', (e) => {
-      console.error('Audio error:', e)
-      setIsPlaying(false)
-    })
-
-    return () => {
-      audio.pause()
-      audio.src = ''
+    if (tracks.length > 0 && !currentTrack) {
+      setCurrentTrack(tracks[0])
     }
-  }, [tracks, repeat, currentTrackIndex, playQueue])
+  }, [tracks, currentTrack])
 
-  // Update audio source when current track changes
-  useEffect(() => {
-    const setAudioSource = async () => {
-      if (currentTrack && audioRef.current) {
-        const audio = audioRef.current
-        // Use cached audio if available
-        const src = await getCachedAudioUrl(currentTrack)
-        audio.src = src
-        audio.volume = volume / 100
-        if (isPlaying) {
-          audio.play().catch(console.error)
-        }
-      }
-    }
-    setAudioSource()
-  }, [currentTrack, volume, isPlaying, getCachedAudioUrl])
-
-  // Generate shuffled play queue
-  const shuffleQueue = useCallback(() => {
-    const indices = tracks.map((_: Track, index: number) => index)
-    for (let i = indices.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [indices[i], indices[j]] = [indices[j], indices[i]]
-    }
-    return indices
-  }, [tracks])
-
-  // Update play queue when shuffle changes
-  useEffect(() => {
-    if (tracks.length > 0) {
-      if (shuffle) {
-        setPlayQueue(shuffleQueue())
-      } else {
-        setPlayQueue(tracks.map((_: Track, index: number) => index))
-      }
-    }
-  }, [shuffle, shuffleQueue, tracks])
-
-  const handlePlay = async () => {
-    if (!audioRef.current || !currentTrack) return
-
-    try {
-      if (isPlaying) {
-        audioRef.current.pause()
-        setIsPlaying(false)
-      } else {
-        await audioRef.current.play()
-        setIsPlaying(true)
-      }
-    } catch (error) {
-      console.error('Playback error:', error)
-      setIsPlaying(false)
-    }
-  }
-
-  const handleNext = useCallback(() => {
-    if (tracks.length === 0) return
-
-    let nextIndex
-    if (repeat && tracks.length === 1) {
-      nextIndex = currentTrackIndex
-    } else {
-      const currentQueuePosition = playQueue.indexOf(currentTrackIndex)
-      const nextQueuePosition = (currentQueuePosition + 1) % playQueue.length
-      nextIndex = playQueue[nextQueuePosition]
-    }
-
-    setCurrentTrackIndex(nextIndex)
-    setCurrentTrack(tracks[nextIndex])
-  }, [tracks, repeat, currentTrackIndex, playQueue])
-
-  const handlePrevious = () => {
-    if (tracks.length === 0) return
-
-    let prevIndex
-    if (repeat && tracks.length === 1) {
-      prevIndex = currentTrackIndex
-    } else {
-      const currentQueuePosition = playQueue.indexOf(currentTrackIndex)
-      const prevQueuePosition = currentQueuePosition === 0 ? playQueue.length - 1 : currentQueuePosition - 1
-      prevIndex = playQueue[prevQueuePosition]
-    }
-
-    setCurrentTrackIndex(prevIndex)
-    setCurrentTrack(tracks[prevIndex])
-  }
-
-  const handleTrackSelect = (track: Track, index: number) => {
+  const playTrack = (track: Track) => {
     setCurrentTrack(track)
-    setCurrentTrackIndex(index)
+    setIsPlaying(true)
   }
 
-  const handleSeek = (newTime: number[]) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = newTime[0]
-      setCurrentTime(newTime[0])
-    }
+  const togglePlay = () => {
+    setIsPlaying(!isPlaying)
   }
 
-  const handleVolumeChange = (newVolume: number[]) => {
-    const vol = newVolume[0]
-    setVolume(vol)
-    if (audioRef.current) {
-      audioRef.current.volume = vol / 100
-    }
+  const nextTrack = () => {
+    if (tracks.length === 0) return
+    const currentIndex = tracks.findIndex(t => t.id === currentTrack?.id)
+    const nextIndex = (currentIndex + 1) % tracks.length
+    setCurrentTrack(tracks[nextIndex])
   }
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${mins}:${secs.toString().padStart(2, '0')}`
+  const previousTrack = () => {
+    if (tracks.length === 0) return
+    const currentIndex = tracks.findIndex(t => t.id === currentTrack?.id)
+    const prevIndex = currentIndex === 0 ? tracks.length - 1 : currentIndex - 1
+    setCurrentTrack(tracks[prevIndex])
   }
 
   const handleLogout = () => {
@@ -289,253 +68,108 @@ export default function CafePlayer() {
     router.push('/login')
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 text-white animate-spin mx-auto mb-4" />
-          <p className="text-white">Loading your music...</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white">
-      <div className="container mx-auto px-4 py-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center space-x-3">
-            <Coffee className="h-8 w-8 text-amber-400" />
-            <div>
-              <h1 className="text-2xl font-bold">Radio Cafe</h1>
-              <p className="text-blue-200">Your offline music experience</p>
-            </div>
+      <div className="container mx-auto p-6">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-4xl font-bold mb-2">🎵 Radio Cafe</h1>
+            <p className="text-blue-200">Your music streaming experience</p>
           </div>
-          <div className="flex items-center space-x-4">
-            <div className="text-sm text-blue-200">
-              {tracks.length} tracks available
-            </div>
-            <Button 
-              onClick={handleLogout}
-              variant="outline" 
-              size="sm"
-              className="border-blue-300 text-blue-300 hover:bg-blue-800"
-            >
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
-          </div>
+          <Button onClick={handleLogout} variant="outline">
+            <LogOut className="h-4 w-4 mr-2" />
+            Logout
+          </Button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Now Playing */}
-          <div className="lg:col-span-2">
-            <Card className="bg-white/10 backdrop-blur-md border-white/20">
-              <CardHeader>
-                <CardTitle className="text-white flex items-center space-x-2">
-                  <Music className="h-5 w-5" />
-                  <span>Now Playing</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {currentTrack ? (
-                  <>
-                    {/* Album Art & Track Info */}
-                    <div className="flex items-center space-x-6">
-                      {currentTrack.thumbnail_url ? (
-                        <Image 
-                          src={currentTrack.thumbnail_url} 
-                          alt="Album Art"
-                          width={96}
-                          height={96}
-                          className="w-24 h-24 rounded-lg object-cover shadow-lg"
-                        />
-                      ) : (
-                        <div className="w-24 h-24 rounded-lg bg-white/20 flex items-center justify-center">
-                          <Music className="h-8 w-8 text-white/50" />
-                        </div>
-                      )}
-                      
-                      <div className="flex-1">
-                        <h2 className="text-xl font-bold text-white">{currentTrack.title}</h2>
-                        <p className="text-blue-200">{currentTrack.artist}</p>
-                        <div className="flex items-center space-x-4 mt-2 text-sm text-blue-300">
-                          {currentTrack.duration && (
-                            <span>{RadioCafeService.formatDuration(currentTrack.duration)}</span>
-                          )}
-                          {currentTrack.file_size && (
-                            <span>{RadioCafeService.formatFileSize(currentTrack.file_size)}</span>
-                          )}
-                          <span className="capitalize">MP3</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="space-y-2">
-                      <Slider
-                        value={[currentTime]}
-                        max={duration}
-                        step={1}
-                        onValueChange={handleSeek}
-                        className="w-full"
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Current Playing */}
+          <Card className="lg:col-span-2 bg-black/30 border-gray-700">
+            <CardHeader>
+              <CardTitle className="text-white">Now Playing</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {currentTrack ? (
+                <div>
+                  <h3 className="text-2xl font-bold text-white mb-1">{currentTrack.title}</h3>
+                  <p className="text-gray-300 mb-6">{currentTrack.artist}</p>
+                  
+                  {currentTrack.youtube_video_id && (
+                    <div className="mb-6">
+                      <iframe
+                        width="100%"
+                        height="315"
+                        src={`https://www.youtube.com/embed/${currentTrack.youtube_video_id}?autoplay=${isPlaying ? 1 : 0}&controls=0`}
+                        title="YouTube video player"
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        className="rounded-lg"
                       />
-                      <div className="flex justify-between text-sm text-blue-200">
-                        <span>{formatTime(currentTime)}</span>
-                        <span>{formatTime(duration)}</span>
-                      </div>
                     </div>
+                  )}
 
-                    {/* Controls */}
-                    <div className="flex items-center justify-center space-x-6">
-                      <Button
-                        onClick={() => setShuffle(!shuffle)}
-                        variant="ghost"
-                        size="sm"
-                        className={`text-white hover:bg-white/20 ${shuffle ? 'bg-white/20' : ''}`}
-                      >
-                        <Shuffle className="h-4 w-4" />
-                      </Button>
-
-                      <Button
-                        onClick={handlePrevious}
-                        variant="ghost"
-                        size="lg"
-                        className="text-white hover:bg-white/20"
-                        disabled={tracks.length === 0}
-                      >
-                        <SkipBack className="h-6 w-6" />
-                      </Button>
-
-                      <Button
-                        onClick={handlePlay}
-                        size="lg"
-                        className="bg-white text-purple-900 hover:bg-blue-100 w-16 h-16 rounded-full"
-                        disabled={!currentTrack}
-                      >
-                        {isPlaying ? (
-                          <Pause className="h-8 w-8" />
-                        ) : (
-                          <Play className="h-8 w-8 ml-1" />
-                        )}
-                      </Button>
-
-                      <Button
-                        onClick={handleNext}
-                        variant="ghost"
-                        size="lg"
-                        className="text-white hover:bg-white/20"
-                        disabled={tracks.length === 0}
-                      >
-                        <SkipForward className="h-6 w-6" />
-                      </Button>
-
-                      <Button
-                        onClick={() => setRepeat(!repeat)}
-                        variant="ghost"
-                        size="sm"
-                        className={`text-white hover:bg-white/20 ${repeat ? 'bg-white/20' : ''}`}
-                      >
-                        <Repeat className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    {/* Volume */}
-                    <div className="flex items-center space-x-4">
-                      <Volume2 className="h-5 w-5 text-white" />
-                      <Slider
-                        value={[volume]}
-                        max={100}
-                        step={1}
-                        onValueChange={handleVolumeChange}
-                        className="flex-1"
-                      />
-                      <span className="text-sm text-blue-200 w-10">{volume}%</span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-center py-12">
-                    <Music className="h-16 w-16 mx-auto mb-4 text-white/30" />
-                    <p className="text-white/70">No tracks available</p>
-                    <p className="text-blue-300 text-sm mt-2">
-                      Ask the admin to add some YouTube songs!
-                    </p>
+                  <div className="flex items-center justify-center space-x-4 mb-4">
+                    <Button onClick={previousTrack} size="sm" variant="outline">
+                      <SkipBack className="h-4 w-4" />
+                    </Button>
+                    <Button onClick={togglePlay} size="lg">
+                      {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
+                    </Button>
+                    <Button onClick={nextTrack} size="sm" variant="outline">
+                      <SkipForward className="h-4 w-4" />
+                    </Button>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Volume2 className="h-4 w-4" />
+                    <Slider
+                      value={volume}
+                      onValueChange={setVolume}
+                      max={100}
+                      step={1}
+                      className="flex-1"
+                    />
+                    <span className="text-sm w-8">{volume[0]}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-400">
+                  <p>No tracks available</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Playlist */}
-          <div>
-            <Card className="bg-white/10 backdrop-blur-md border-white/20">
-              <CardHeader>
-                <CardTitle className="text-white flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Music className="h-5 w-5" />
-                    <span>Playlist ({tracks.length})</span>
-                  </div>
-                  <Button
-                    onClick={loadTracks}
-                    variant="ghost"
-                    size="sm"
-                    className="text-blue-300 hover:bg-white/10"
+          <Card className="bg-black/30 border-gray-700">
+            <CardHeader>
+              <CardTitle className="text-white">Playlist ({tracks.length})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {tracks.map((track) => (
+                  <div
+                    key={track.id}
+                    onClick={() => playTrack(track)}
+                    className={`p-3 rounded cursor-pointer transition-colors ${
+                      currentTrack?.id === track.id
+                        ? 'bg-blue-600/50 border border-blue-500'
+                        : 'bg-gray-800/50 hover:bg-gray-700/50'
+                    }`}
                   >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {tracks.map((track, index) => (
-                    <div
-                      key={track.id}
-                      onClick={() => handleTrackSelect(track, index)}
-                      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                        currentTrack?.id === track.id
-                          ? 'bg-white/20 border-l-4 border-amber-400'
-                          : 'bg-white/5 hover:bg-white/10'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        {track.thumbnail_url ? (
-                          <Image 
-                            src={track.thumbnail_url} 
-                            alt="Thumbnail"
-                            width={40}
-                            height={40}
-                            className="w-10 h-10 rounded object-cover"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded bg-white/20 flex items-center justify-center">
-                            <Music className="h-4 w-4 text-white/50" />
-                          </div>
-                        )}
-                        
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white font-medium truncate">{track.title}</p>
-                          <p className="text-blue-200 text-sm truncate">{track.artist}</p>
-                        </div>
-                        
-                        <div className="text-blue-300 text-xs">
-                          {track.duration && RadioCafeService.formatDuration(track.duration)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                
-                {tracks.length === 0 && (
-                  <div className="text-center py-8 text-white/50">
-                    <Music className="h-12 w-12 mx-auto mb-4" />
-                    <p>No music available</p>
-                    <p className="text-sm mt-2">Ask the admin to add some YouTube songs!</p>
+                    <div className="font-medium text-white text-sm">{track.title}</div>
+                    <div className="text-gray-400 text-xs">{track.artist}</div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                ))}
+              </div>
+              {tracks.length === 0 && (
+                <div className="text-center py-8 text-gray-400">
+                  <p>No tracks in playlist</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
