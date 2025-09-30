@@ -15,48 +15,8 @@ export type LocalTrack = {
 
 const STORAGE_KEY = 'radio_cafe_tracks'
 
-// Default tracks for demo (marked as ready so they appear in cafe)
-const defaultTracks: LocalTrack[] = [
-  {
-    id: '1',
-    title: 'Smooth Jazz Cafe',
-    artist: 'Demo Artist',
-    youtubeUrl: 'https://youtube.com/watch?v=demo1',
-    thumbnail: 'https://via.placeholder.com/300x300/6366f1/white?text=Jazz',
-    duration: '3:24',
-    addedAt: new Date().toISOString(),
-    // Simplified fields for ready tracks
-    status: 'ready',
-    mp3FileUrl: '/api/stream/demo1.mp3',
-    fileSize: 5242880 // 5MB
-  },
-  {
-    id: '2',
-    title: 'Ambient Lounge',
-    artist: 'Chill Collective',
-    youtubeUrl: 'https://youtube.com/watch?v=demo2',
-    thumbnail: 'https://via.placeholder.com/300x300/8b5cf6/white?text=Ambient',
-    duration: '4:12',
-    addedAt: new Date().toISOString(),
-    // Simplified fields for ready tracks
-    status: 'ready',
-    mp3FileUrl: '/api/stream/demo2.mp3',
-    fileSize: 6815744 // 6.5MB
-  },
-  {
-    id: '3',
-    title: 'Bossa Nova Dreams',
-    artist: 'Latin Vibes',
-    youtubeUrl: 'https://youtube.com/watch?v=demo3',
-    thumbnail: 'https://via.placeholder.com/300x300/a855f7/white?text=Bossa',
-    duration: '2:58',
-    addedAt: new Date().toISOString(),
-    // Simplified fields for ready tracks
-    status: 'ready',
-    mp3FileUrl: '/api/stream/demo3.mp3',
-    fileSize: 4194304 // 4MB
-  }
-]
+// No default tracks - admin will add YouTube songs that both admin and cafe users will see
+const defaultTracks: LocalTrack[] = []
 
 export class TrackStorage {
   static getTracks(): LocalTrack[] {

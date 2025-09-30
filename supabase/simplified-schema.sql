@@ -71,42 +71,8 @@ CREATE TRIGGER update_tracks_updated_at
   FOR EACH ROW 
   EXECUTE FUNCTION update_updated_at_column();
 
--- Insert some sample tracks for demo (these would be processed by the conversion service)
-INSERT INTO tracks (title, artist, youtube_url, youtube_video_id, thumbnail_url, duration, mp3_file_url, file_size, status) VALUES 
-  (
-    'Smooth Jazz Cafe', 
-    'Demo Artist', 
-    'https://youtube.com/watch?v=demo1',
-    'demo1',
-    'https://img.youtube.com/vi/demo1/maxresdefault.jpg',
-    204,
-    '/api/stream/demo1.mp3',
-    5242880,
-    'ready'
-  ),
-  (
-    'Ambient Lounge', 
-    'Chill Collective', 
-    'https://youtube.com/watch?v=demo2',
-    'demo2',
-    'https://img.youtube.com/vi/demo2/maxresdefault.jpg',
-    252,
-    '/api/stream/demo2.mp3',
-    6815744,
-    'ready'
-  ),
-  (
-    'Bossa Nova Dreams', 
-    'Latin Vibes', 
-    'https://youtube.com/watch?v=demo3',
-    'demo3',
-    'https://img.youtube.com/vi/demo3/maxresdefault.jpg',
-    178,
-    '/api/stream/demo3.mp3',
-    4194304,
-    'ready'
-  )
-ON CONFLICT (youtube_url) DO NOTHING;
+-- No sample tracks - admin will add real YouTube songs to the database
+-- Cafe users will see the same tracks that admin adds
 
 -- View for getting ready tracks (what cafe users see)
 CREATE OR REPLACE VIEW ready_tracks AS

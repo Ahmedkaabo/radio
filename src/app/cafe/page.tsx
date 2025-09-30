@@ -81,9 +81,24 @@ export default function CafePlayer() {
     setIsLoading(true)
     console.log('🎵 Loading ready tracks...')
     try {
-      // Get ready tracks directly (already filtered for status='ready' and mp3_file_url exists)
-      const loadedTracks = await RadioCafeService.getReadyTracks()
-      console.log('🎵 Loaded ready tracks:', loadedTracks.length, loadedTracks)
+      let loadedTracks: Track[] = []
+      
+      // Get ready tracks from the same database that admin uses
+      try {
+        loadedTracks = await RadioCafeService.getReadyTracks()
+        console.log('🎵 Loaded ready tracks from database:', loadedTracks.length, loadedTracks)
+      } catch (error) {
+        console.log('🎵 Falling back to localStorage (no database connection)')
+        // Fallback to localStorage if Supabase not available - but it will be empty initially
+        const { HybridStorage } = await import('@/lib/hybrid-storage')
+        await HybridStorage.init()
+        const allTracks = await HybridStorage.getTracks()
+        loadedTracks = allTracks.filter((track: Track) => 
+          track.status === 'ready' && track.mp3_file_url
+        )
+        console.log('🎵 Loaded ready tracks from localStorage:', loadedTracks.length)
+      }
+      
       setTracks(loadedTracks)
       
       if (loadedTracks.length > 0) {
@@ -444,7 +459,7 @@ export default function CafePlayer() {
                     <Music className="h-16 w-16 mx-auto mb-4 text-white/30" />
                     <p className="text-white/70">No tracks available</p>
                     <p className="text-blue-300 text-sm mt-2">
-                      Ask the admin to add and download some music!
+                      Ask the admin to add some YouTube songs!
                     </p>
                   </div>
                 )}
@@ -514,8 +529,8 @@ export default function CafePlayer() {
                 {tracks.length === 0 && (
                   <div className="text-center py-8 text-white/50">
                     <Music className="h-12 w-12 mx-auto mb-4" />
-                    <p>No music available offline</p>
-                    <p className="text-sm mt-2">Check back later for new downloads!</p>
+                    <p>No music available</p>
+                    <p className="text-sm mt-2">Ask the admin to add some YouTube songs!</p>
                   </div>
                 )}
               </CardContent>
