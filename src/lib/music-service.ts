@@ -137,21 +137,53 @@ export class MusicService {
   }
 
   // Delete track (admin only)
-  static async deleteTrack(id: string): Promise<boolean> {
+  static async deleteTrack(id: string): Promise<void> {
     try {
       const supabase = createClient()
+      
+      // Get track info before deleting (to clean up storage file)
+      const { data: track } = await supabase
+        .from('tracks')
+        .select('storage_file_name')
+        .eq('id', id)
+        .single()
+
+      // Delete from database
       const { error } = await supabase
         .from('tracks')
         .delete()
         .eq('id', id)
-      
-      return !error
-    } catch {
-      // Fallback to localStorage
-      const tracks = await this.getAllTracks()
-      const filtered = tracks.filter(t => t.id !== id)
-      localStorage.setItem('radio_cafe_tracks', JSON.stringify(filtered))
-      return filtered.length !== tracks.length
+
+      if (error) {
+        console.error('Supabase error:', error)
+        // Fallback to localStorage
+        const existingTracks = JSON.parse(localStorage.getItem('radio_cafe_tracks') || '[]')
+        const updatedTracks = existingTracks.filter((track: Track) => track.id !== id)
+        localStorage.setItem('radio_cafe_tracks', JSON.stringify(updatedTracks))
+      } else {
+        // Clean up storage file if it exists
+        if (track?.storage_file_name) {
+          this.cleanupStorageFile(track.storage_file_name)
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting track:', error)
+      throw error
+    }
+  }
+
+  private static async cleanupStorageFile(fileName: string): Promise<void> {
+    try {
+      // Call cleanup API
+      await fetch('/api/cleanup-storage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fileName }),
+      })
+    } catch (error) {
+      console.warn('Failed to cleanup storage file:', error)
     }
   }
 

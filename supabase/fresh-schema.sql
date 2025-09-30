@@ -34,7 +34,8 @@ CREATE TABLE tracks (
       ELSE 'https://via.placeholder.com/480x360/6366f1/white?text=Music'
     END
   ) STORED,
-  mp3_file_path TEXT,
+  mp3_file_path TEXT, -- Supabase Storage public URL
+  storage_file_name TEXT, -- Original file name in storage for cleanup
   conversion_status TEXT DEFAULT 'pending' CHECK (conversion_status IN ('pending', 'processing', 'completed', 'error')),
   file_size BIGINT,
   duration INTEGER,

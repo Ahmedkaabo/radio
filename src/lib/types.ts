@@ -7,6 +7,7 @@ export interface Track {
   youtube_video_id?: string
   thumbnail_url?: string
   mp3_file_path?: string
+  storage_file_name?: string
   conversion_status: 'pending' | 'processing' | 'completed' | 'error'
   file_size?: number
   duration?: number
