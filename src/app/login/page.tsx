@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Music, Lock, Shield, Users } from 'lucide-react'
-import { RadioCafeService } from '@/lib/radio-cafe-service'
+import { MusicService } from '@/lib/music-service'
 
 export default function LoginPage() {
   const [passcode, setPasscode] = useState('')
@@ -21,7 +21,7 @@ export default function LoginPage() {
 
     try {
       // Authenticate user
-      const user = await RadioCafeService.authenticateUser(passcode)
+      const user = await MusicService.authenticate(passcode)
 
       if (user) {
         localStorage.setItem('userRole', user.role)
