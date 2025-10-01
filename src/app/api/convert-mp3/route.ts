@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
           try {
             console.log('Retrying with minimal options...')
             info = await ytdl.getInfo(normalizedUrl)
-          } catch (retryError) {
+          } catch {
             throw new Error(`🛑 Unable to access video: ${errorMessage}. Please try a different YouTube video.`)
           }
         }
