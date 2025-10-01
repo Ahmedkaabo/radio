@@ -53,8 +53,24 @@ export default function AdminPage() {
     }
   }, [router])
 
+  const validateYouTubeUrl = (url: string): boolean => {
+    const normalizedUrl = url.trim()
+    return (
+      normalizedUrl.includes('youtube.com/watch') || 
+      normalizedUrl.includes('youtu.be/') ||
+      normalizedUrl.includes('youtube.com/embed/') ||
+      normalizedUrl.includes('m.youtube.com/watch')
+    )
+  }
+
   const handleAddTrack = async () => {
     if (!title.trim() || !artist.trim() || !youtubeUrl.trim()) return
+
+    // Validate YouTube URL format
+    if (!validateYouTubeUrl(youtubeUrl)) {
+      alert('Please enter a valid YouTube URL (youtube.com/watch?v=... or youtu.be/...)')
+      return
+    }
 
     setLoading(true)
     try {
@@ -70,6 +86,7 @@ export default function AdminPage() {
       await loadTracks()
     } catch (error) {
       console.error('Failed to add track:', error)
+      alert('Failed to add track. Please check the YouTube URL and try again.')
     } finally {
       setLoading(false)
     }
@@ -152,7 +169,7 @@ export default function AdminPage() {
                 onChange={(e) => setArtist(e.target.value)}
               />
               <Input
-                placeholder="YouTube URL"
+                placeholder="YouTube URL (e.g. youtube.com/watch?v=... or youtu.be/...)"
                 value={youtubeUrl}
                 onChange={(e) => setYoutubeUrl(e.target.value)}
               />

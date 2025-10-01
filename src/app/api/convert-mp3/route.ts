@@ -42,35 +42,91 @@ export async function POST(request: NextRequest) {
       const baseFilename = generateMp3FileName(track)
       const filename = baseFilename // Keep as .mp3 for consistency in the UI
 
-      // Validate YouTube URL
-      if (!ytdl.validateURL(track.youtube_url)) {
-        throw new Error('Invalid YouTube URL')
+      // Normalize and validate YouTube URL
+      let normalizedUrl = track.youtube_url.trim()
+      
+      // Add https:// if missing
+      if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+        normalizedUrl = 'https://' + normalizedUrl
+      }
+      
+      // Convert shortened URLs to full URLs
+      if (normalizedUrl.includes('youtu.be/')) {
+        const videoId = normalizedUrl.split('youtu.be/')[1]?.split('?')[0]
+        if (videoId) {
+          normalizedUrl = `https://www.youtube.com/watch?v=${videoId}`
+        }
+      }
+      
+      console.log('Processing URL:', normalizedUrl)
+      
+      if (!ytdl.validateURL(normalizedUrl)) {
+        throw new Error('Invalid YouTube URL format. Please use a valid YouTube video URL.')
       }
 
-      // Get video info for duration and quality
-      const info = await ytdl.getInfo(track.youtube_url)
-      const duration = Math.round(info.videoDetails.lengthSeconds ? parseInt(info.videoDetails.lengthSeconds) : 0)
+      // Get video info with better error handling
+      let info
+      try {
+        info = await ytdl.getInfo(normalizedUrl)
+      } catch (infoError: any) {
+        console.error('Failed to get video info:', infoError)
+        
+        if (infoError.statusCode === 410) {
+          throw new Error('This video is not available for download (blocked by YouTube). Please try a different video.')
+        } else if (infoError.statusCode === 403) {
+          throw new Error('Access denied. This video may be private or restricted.')
+        } else if (infoError.statusCode === 404) {
+          throw new Error('Video not found. Please check the URL and try again.')
+        } else {
+          throw new Error(`Unable to access video: ${infoError.message || 'Unknown error'}`)
+        }
+      }
 
-      // Download audio stream (highest quality audio)
-      const audioFormat = ytdl.chooseFormat(info.formats, { 
-        quality: 'highestaudio',
-        filter: 'audioonly'
-      })
+      // Check if video is available
+      if (!info.videoDetails || !info.videoDetails.videoId) {
+        throw new Error('Video information not available')
+      }
+
+      // Check if video is too long (limit to 30 minutes to prevent abuse)
+      const duration = Math.round(info.videoDetails.lengthSeconds ? parseInt(info.videoDetails.lengthSeconds) : 0)
+      if (duration > 1800) { // 30 minutes
+        throw new Error('Video is too long (maximum 30 minutes allowed)')
+      }
+
+      // Download audio stream with better format selection
+      let audioFormat
+      try {
+        audioFormat = ytdl.chooseFormat(info.formats, { 
+          quality: 'highestaudio',
+          filter: 'audioonly'
+        })
+      } catch (formatError) {
+        // Fallback to any audio format
+        audioFormat = ytdl.chooseFormat(info.formats, { 
+          filter: format => format.hasAudio && !format.hasVideo
+        })
+      }
 
       if (!audioFormat) {
-        throw new Error('No audio format available for this video')
+        throw new Error('No downloadable audio format found for this video')
       }
 
       console.log('Downloading audio:', {
         title: info.videoDetails.title,
-        duration: duration,
-        format: audioFormat.container
+        duration: `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}`,
+        format: audioFormat.container || 'unknown',
+        quality: audioFormat.audioBitrate || 'unknown'
       })
 
-      // Create audio stream
-      const audioStream = ytdl(track.youtube_url, { 
+      // Create audio stream with additional options
+      const audioStream = ytdl(normalizedUrl, { 
         format: audioFormat,
-        quality: 'highestaudio'
+        quality: 'highestaudio',
+        requestOptions: {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        }
       })
 
       // Collect audio data in memory
