@@ -54,8 +54,22 @@ export async function POST(request: NextRequest) {
       console.log('🔍 Original URL:', track.youtube_url)
       console.log('🔍 Processing URL:', youtubeUrl)
       
-      // Get video info using @distube/ytdl-core with default settings
-      const info = await ytdl.getInfo(youtubeUrl)
+      // Configure ytdl-core with browser-like options to avoid bot detection
+      const ytdlOptions = {
+        requestOptions: {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+          }
+        }
+      }
+      
+      // Get video info using @distube/ytdl-core with browser-like headers
+      const info = await ytdl.getInfo(youtubeUrl, ytdlOptions)
       
       // Basic validation
       if (!info.videoDetails) {
@@ -73,10 +87,11 @@ export async function POST(request: NextRequest) {
         duration: `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}`
       })
 
-      // Download audio using @distube/ytdl-core with default settings
+      // Download audio using @distube/ytdl-core with browser-like headers
       const audioStream = ytdl(youtubeUrl, { 
         filter: 'audioonly',
-        quality: 'highestaudio'
+        quality: 'highestaudio',
+        ...ytdlOptions
       })
 
       // Collect audio data in memory
