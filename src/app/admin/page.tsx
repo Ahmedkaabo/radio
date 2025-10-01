@@ -63,6 +63,11 @@ export default function AdminPage() {
     )
   }
 
+  const formatYouTubeUrl = (url: string): string => {
+    const trimmed = url.trim()
+    return trimmed.startsWith('http') ? trimmed : `https://${trimmed}`
+  }
+
   const handleAddTrack = async () => {
     if (!title.trim() || !artist.trim() || !youtubeUrl.trim()) return
 
@@ -74,11 +79,14 @@ export default function AdminPage() {
 
     setLoading(true)
     try {
-      await MusicService.addTrack({
+      const trackData = {
         title: title.trim(),
         artist: artist.trim(),
         youtube_url: youtubeUrl.trim()
-      })
+      }
+      console.log('🎵 Adding track with URL:', trackData.youtube_url)
+      
+      await MusicService.addTrack(trackData)
       
       setTitle('')
       setArtist('')
@@ -230,7 +238,7 @@ export default function AdminPage() {
                       </TableCell>
                       <TableCell>
                         <a 
-                          href={track.youtube_url} 
+                          href={formatYouTubeUrl(track.youtube_url)} 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline text-sm"
