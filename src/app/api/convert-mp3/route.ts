@@ -80,43 +80,36 @@ export async function POST(request: NextRequest) {
       const isNetlify = process.env.NETLIFY === 'true'
       const isServerless = isVercel || isNetlify || process.env.AWS_LAMBDA_FUNCTION_NAME
       
+      // Simplified, reliable yt-dlp options for production
       const ytDlpOptions = [
         youtubeUrl,
         '--extract-audio',
         '--audio-format', 'mp3',
-        '--audio-quality', isServerless ? '5' : '0', // Slightly lower quality for serverless speed
-        '--no-playlist',
-        '--max-duration', '1800', // 30 minutes max
+        '--audio-quality', '0', // Best quality
         '--output', outputTemplate,
-        // Production server headers
-        '--user-agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        '--referer', 'https://www.youtube.com/',
-        '--no-check-certificates',
+        '--no-playlist',
         '--no-warnings',
-        '--prefer-free-formats',
-        '--add-header', 'Accept-Language:en-US,en;q=0.9',
-        '--add-header', 'Accept-Encoding:gzip, deflate, br',
-        '--add-header', 'Cache-Control:no-cache',
-        '--add-header', 'Pragma:no-cache',
-        // Serverless optimizations
-        '--extractor-retries', isServerless ? '2' : '5',
-        '--fragment-retries', isServerless ? '2' : '5',
-        '--retry-sleep', isServerless ? 'linear=1' : 'exp=1:5',
-        '--socket-timeout', isServerless ? '15' : '30',
-        '--geo-bypass'
+        '--no-check-certificate',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       ]
       
       console.log('🌐 Server environment:', { isVercel, isNetlify, isServerless })
       
       console.log('🔄 Running server-optimized yt-dlp...')
-      console.log('📋 Options:', ytDlpOptions.slice(1).join(' '))
+      console.log('📋 Full command:', ['yt-dlp', ...ytDlpOptions].join(' '))
+      console.log('🌍 Working directory:', tempDir)
+      console.log('📂 Temp dir exists:', await fs.access(tempDir).then(() => true).catch(() => false))
       
       try {
-        await ytDlpWrap.exec(ytDlpOptions)
+        // Get yt-dlp output for debugging
+        const result = await ytDlpWrap.execPromise(ytDlpOptions)
+        console.log('✅ yt-dlp execution completed')
+        console.log('📄 yt-dlp output:', result)
         
         // Find the downloaded file
         const files = await fs.readdir(tempDir)
-        console.log('📁 Files in temp dir:', files)
+        console.log('📁 Files in temp dir after yt-dlp:', files)
+        console.log('📊 File count:', files.length)
         
         const downloadedFile = files.find(f => f.startsWith('audio-') && f.endsWith('.mp3'))
         
@@ -147,23 +140,75 @@ export async function POST(request: NextRequest) {
         
       } catch (ytDlpError) {
         console.error('❌ yt-dlp failed with error:', ytDlpError)
+        console.log('🔄 Trying fallback: download video first, then extract audio...')
         
-        // Enhanced error reporting for production debugging
-        const errorMessage = ytDlpError instanceof Error ? ytDlpError.message : 'Unknown error'
-        
-        // Common production error patterns
-        if (errorMessage.includes('Sign in to confirm')) {
-          throw new Error('YouTube anti-bot detection triggered. Video may require manual verification.')
-        } else if (errorMessage.includes('Video unavailable')) {
-          throw new Error('Video is unavailable, private, or deleted.')
-        } else if (errorMessage.includes('age')) {
-          throw new Error('Video is age-restricted and cannot be downloaded.')
-        } else if (errorMessage.includes('region')) {
-          throw new Error('Video is region-blocked and cannot be accessed from this server location.')
-        } else if (errorMessage.includes('live')) {
-          throw new Error('Live streams cannot be downloaded.')
-        } else {
-          throw new Error(`YouTube download failed: ${errorMessage}`)
+        try {
+          // Fallback: Download video first, then extract audio
+          const fallbackOptions = [
+            youtubeUrl,
+            '--format', 'worst[height<=480]/worst',
+            '--output', path.join(tempDir, 'video.%(ext)s'),
+            '--no-playlist',
+            '--no-warnings',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          ]
+          
+          console.log('📋 Fallback command:', ['yt-dlp', ...fallbackOptions].join(' '))
+          const fallbackResult = await ytDlpWrap.execPromise(fallbackOptions)
+          console.log('✅ Video download completed:', fallbackResult)
+          
+          // Check what was downloaded
+          const fallbackFiles = await fs.readdir(tempDir)
+          console.log('📁 Files after video download:', fallbackFiles)
+          
+          const videoFile = fallbackFiles.find(f => f.startsWith('video.'))
+          if (!videoFile) {
+            throw new Error('Video download failed - no video file created')
+          }
+          
+          // Now extract audio from the video
+          const extractOptions = [
+            path.join(tempDir, videoFile),
+            '--extract-audio',
+            '--audio-format', 'mp3',
+            '--output', path.join(tempDir, 'extracted_audio.%(ext)s')
+          ]
+          
+          console.log('🔄 Extracting audio from video...')
+          await ytDlpWrap.execPromise(extractOptions)
+          
+          // Check for extracted audio
+          const finalFiles = await fs.readdir(tempDir)
+          console.log('📁 Files after audio extraction:', finalFiles)
+          
+          const extractedAudio = finalFiles.find(f => f.startsWith('extracted_audio') && (f.endsWith('.mp3') || f.endsWith('.m4a')))
+          if (extractedAudio) {
+            audioData = await fs.readFile(path.join(tempDir, extractedAudio))
+            console.log('✅ Fallback method succeeded!')
+          } else {
+            throw new Error('Audio extraction from video failed')
+          }
+          
+        } catch (fallbackError) {
+          console.error('❌ Fallback method also failed:', fallbackError)
+          
+          // Enhanced error reporting for production debugging
+          const errorMessage = ytDlpError instanceof Error ? ytDlpError.message : 'Unknown error'
+          
+          // Common production error patterns
+          if (errorMessage.includes('Sign in to confirm')) {
+            throw new Error('YouTube anti-bot detection triggered. Video may require manual verification.')
+          } else if (errorMessage.includes('Video unavailable')) {
+            throw new Error('Video is unavailable, private, or deleted.')
+          } else if (errorMessage.includes('age')) {
+            throw new Error('Video is age-restricted and cannot be downloaded.')
+          } else if (errorMessage.includes('region')) {
+            throw new Error('Video is region-blocked and cannot be accessed from this server location.')
+          } else if (errorMessage.includes('live')) {
+            throw new Error('Live streams cannot be downloaded.')
+          } else {
+            throw new Error(`All download methods failed. Original: ${errorMessage}. Fallback: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown'}`)
+          }
         }
       }
 
