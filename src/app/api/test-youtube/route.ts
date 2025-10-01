@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ytdl from 'ytdl-core'
+import ytdlDistube from '@distube/ytdl-core'
 import youtubedl from 'youtube-dl-exec'
 
 export async function POST(request: NextRequest) {
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest) {
     const results = {
       url: normalizedUrl,
       ytdlCore: { success: false, error: '', details: null as unknown },
+      distubeCore: { success: false, error: '', details: null as unknown },
       youtubeDlExec: { success: false, error: '', details: null as unknown }
     }
 
@@ -60,6 +62,33 @@ export async function POST(request: NextRequest) {
       const err = error as { statusCode?: number; message?: string }
       results.ytdlCore.error = `Status: ${err.statusCode || 'unknown'}, Message: ${err.message || 'unknown'}`
       console.error('❌ ytdl-core failed:', err)
+    }
+
+    // Test @distube/ytdl-core
+    try {
+      console.log('📡 Testing @distube/ytdl-core...')
+      const info = await ytdlDistube.getInfo(normalizedUrl, {
+        requestOptions: {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9'
+          }
+        }
+      })
+      
+      results.distubeCore.success = true
+      results.distubeCore.details = {
+        title: info.videoDetails.title,
+        duration: info.videoDetails.lengthSeconds,
+        isPrivate: info.videoDetails.isPrivate,
+        isLiveContent: info.videoDetails.isLiveContent,
+        formatsCount: info.formats?.length || 0
+      }
+      
+    } catch (error: unknown) {
+      const err = error as { statusCode?: number; message?: string }
+      results.distubeCore.error = `Status: ${err.statusCode || 'unknown'}, Message: ${err.message || 'unknown'}`
+      console.error('❌ @distube/ytdl-core failed:', err)
     }
 
     // Test youtube-dl-exec
