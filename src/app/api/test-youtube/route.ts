@@ -42,6 +42,9 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+
+      // Prevent ytdl from trying to write cache files to read-only filesystem
+      process.env.YTDL_NO_UPDATE = 'true'
       
       const info = await ytdl.getInfo(url, ytdlOptions)
       

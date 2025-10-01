@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       console.log('🔍 Original URL:', track.youtube_url)
       console.log('🔍 Processing URL:', youtubeUrl)
       
-      // Configure ytdl-core with browser-like options to avoid bot detection
+      // Configure ytdl-core with browser-like options and writable temp directory
       const ytdlOptions = {
         requestOptions: {
           headers: {
@@ -66,6 +66,12 @@ export async function POST(request: NextRequest) {
             'Upgrade-Insecure-Requests': '1',
           }
         }
+      }
+
+      // Set ytdl-core to use our writable temp directory for any cache files
+      process.env.YTDL_NO_UPDATE = 'true'
+      if (process.env.TMPDIR) {
+        process.env.YTDL_CACHE_DIR = tempDir
       }
       
       // Get video info using @distube/ytdl-core with browser-like headers
