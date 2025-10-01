@@ -123,8 +123,9 @@ export async function POST(request: NextRequest) {
       success: true,
       results,
       recommendation: results.ytdlCore.success ? 'ytdl-core works' : 
+                     results.distubeCore.success ? 'Use @distube/ytdl-core' :
                      results.youtubeDlExec.success ? 'Use youtube-dl-exec' : 
-                     'Both methods failed - video may be restricted'
+                     'All methods failed - video may be completely restricted'
     })
     
   } catch (error) {

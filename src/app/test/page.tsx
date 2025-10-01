@@ -19,6 +19,15 @@ interface TestResults {
         formatsCount: number
       }
     }
+    distubeCore: {
+      success: boolean
+      error?: string
+      details?: {
+        title: string
+        duration: string
+        formatsCount: number
+      }
+    }
     youtubeDlExec: {
       success: boolean
       error?: string
@@ -128,7 +137,7 @@ export default function TestPage() {
                   </p>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-3 gap-4">
                   <div>
                     <h4 className="font-semibold mb-2">ytdl-core Result</h4>
                     <div className={`border rounded p-3 ${
