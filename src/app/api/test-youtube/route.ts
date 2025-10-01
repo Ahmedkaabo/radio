@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ytdl from '@distube/ytdl-core'
+import { promises as fs } from 'fs'
+import path from 'path'
+import os from 'os'
 
 export async function POST(request: NextRequest) {
+  // Store original working directory
+  const originalCwd = process.cwd()
+  
   try {
     const { url: rawUrl } = await request.json()
     
@@ -43,6 +49,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Create temp directory and change working directory to prevent EROFS errors
+      const tempDir = path.join(os.tmpdir(), 'radio-cafe-test')
+      await fs.mkdir(tempDir, { recursive: true })
+      process.chdir(tempDir)
+      console.log('🔧 Changed working directory to:', tempDir)
+      
       // Prevent ytdl from trying to write cache files to read-only filesystem
       process.env.YTDL_NO_UPDATE = 'true'
       
@@ -72,10 +84,17 @@ export async function POST(request: NextRequest) {
     })
     
   } catch (error) {
-    console.error('Test endpoint error:', error)
-    return NextResponse.json({ 
+    console.error('Test error:', error)
+    return NextResponse.json({
       error: 'Test failed',
-      details: String(error)
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
+  } finally {
+    // Always restore original working directory
+    try {
+      process.chdir(originalCwd)
+    } catch (e) {
+      console.warn('Could not restore working directory:', e)
+    }
   }
 }

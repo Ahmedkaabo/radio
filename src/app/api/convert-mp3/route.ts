@@ -7,6 +7,9 @@ import os from 'os'
 import ytdl from '@distube/ytdl-core'
 
 export async function POST(request: NextRequest) {
+  // Store original working directory
+  const originalCwd = process.cwd()
+  
   try {
     const { trackId } = await request.json()
 
@@ -38,6 +41,10 @@ export async function POST(request: NextRequest) {
       // Create temporary directory for processing
       const tempDir = path.join(os.tmpdir(), 'radio-cafe-conversion')
       await fs.mkdir(tempDir, { recursive: true })
+
+      // Change working directory to writable temp dir to prevent EROFS errors
+      process.chdir(tempDir)
+      console.log('🔧 Changed working directory to:', tempDir)
 
       // Generate unique filename for Supabase Storage
       const baseFilename = generateMp3FileName(track)
@@ -191,5 +198,12 @@ export async function POST(request: NextRequest) {
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
+  } finally {
+    // Always restore original working directory
+    try {
+      process.chdir(originalCwd)
+    } catch (e) {
+      console.warn('Could not restore working directory:', e)
+    }
   }
 }
