@@ -64,29 +64,64 @@ export async function POST(request: NextRequest) {
         throw new Error('Invalid YouTube URL format. Please use a valid YouTube video URL.')
       }
 
-      // Get video info with better error handling
+      // Get video info with better error handling and retry mechanism
       let info
       try {
-        info = await ytdl.getInfo(normalizedUrl)
+        // Try with different user agent first
+        info = await ytdl.getInfo(normalizedUrl, {
+          requestOptions: {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            }
+          }
+        })
       } catch (infoError: unknown) {
         console.error('Failed to get video info:', infoError)
         
         const error = infoError as { statusCode?: number; message?: string }
+        const errorMessage = error.message || 'Unknown error'
         
-        if (error.statusCode === 410) {
-          throw new Error('This video is not available for download (blocked by YouTube). Please try a different video.')
-        } else if (error.statusCode === 403) {
-          throw new Error('Access denied. This video may be private or restricted.')
-        } else if (error.statusCode === 404) {
-          throw new Error('Video not found. Please check the URL and try again.')
+        // Enhanced error detection
+        if (error.statusCode === 410 || errorMessage.includes('Video unavailable')) {
+          throw new Error('⚠️ Video unavailable: This video may be blocked in your region, set to private, or removed by the uploader.')
+        } else if (error.statusCode === 403 || errorMessage.includes('Sign in to confirm')) {
+          throw new Error('🔒 Access restricted: This video requires sign-in or may be age-restricted.')
+        } else if (error.statusCode === 404 || errorMessage.includes('Video not found')) {
+          throw new Error('❌ Video not found: Please verify the URL is correct and the video exists.')
+        } else if (errorMessage.includes('unavailable') || errorMessage.includes('private')) {
+          throw new Error('🚫 Video unavailable: The video is private, deleted, or restricted.')
+        } else if (errorMessage.includes('region')) {
+          throw new Error('🌍 Geographic restriction: This video is not available in your region.')
         } else {
-          throw new Error(`Unable to access video: ${error.message || 'Unknown error'}`)
+          // Try alternative method as fallback
+          try {
+            console.log('Retrying with minimal options...')
+            info = await ytdl.getInfo(normalizedUrl)
+          } catch (retryError) {
+            throw new Error(`🛑 Unable to access video: ${errorMessage}. Please try a different YouTube video.`)
+          }
         }
       }
 
-      // Check if video is available
-      if (!info.videoDetails || !info.videoDetails.videoId) {
-        throw new Error('Video information not available')
+      // Enhanced video validation
+      if (!info || !info.videoDetails) {
+        throw new Error('📋 No video information available: The video metadata could not be retrieved.')
+      }
+      
+      if (!info.videoDetails.videoId) {
+        throw new Error('🆔 Invalid video: No video ID found in the response.')
+      }
+
+      // Check if video is actually playable
+      if (info.videoDetails.isPrivate) {
+        throw new Error('🔒 Private video: This video is set to private and cannot be downloaded.')
+      }
+
+      // Check if it's live content (which may not be downloadable)
+      if (info.videoDetails.isLiveContent) {
+        throw new Error('📺 Live content: Live streams and premieres may not be downloadable. Please try after the stream ends.')
       }
 
       // Check if video is too long (limit to 30 minutes to prevent abuse)
@@ -95,22 +130,40 @@ export async function POST(request: NextRequest) {
         throw new Error('Video is too long (maximum 30 minutes allowed)')
       }
 
-      // Download audio stream with better format selection
+      // Enhanced format selection with multiple fallbacks
       let audioFormat
+      
+      // Check if formats are available
+      if (!info.formats || info.formats.length === 0) {
+        throw new Error('🎵 No audio formats: This video has no downloadable audio streams available.')
+      }
+
       try {
+        // Try to get highest quality audio-only format
         audioFormat = ytdl.chooseFormat(info.formats, { 
           quality: 'highestaudio',
           filter: 'audioonly'
         })
       } catch {
-        // Fallback to any audio format
-        audioFormat = ytdl.chooseFormat(info.formats, { 
-          filter: format => format.hasAudio && !format.hasVideo
-        })
+        try {
+          // Fallback: any format with audio (may include video)
+          audioFormat = ytdl.chooseFormat(info.formats, { 
+            filter: format => format.hasAudio && !format.hasVideo
+          })
+        } catch {
+          try {
+            // Last resort: any format with audio (including video formats)
+            audioFormat = ytdl.chooseFormat(info.formats, { 
+              filter: format => format.hasAudio
+            })
+          } catch {
+            throw new Error('🔇 No audio available: This video contains no downloadable audio streams.')
+          }
+        }
       }
 
       if (!audioFormat) {
-        throw new Error('No downloadable audio format found for this video')
+        throw new Error('🚫 Audio extraction failed: Could not find a suitable audio format for this video.')
       }
 
       console.log('Downloading audio:', {
