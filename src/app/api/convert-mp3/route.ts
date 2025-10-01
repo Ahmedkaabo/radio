@@ -134,30 +134,62 @@ export async function POST(request: NextRequest) {
       }
       
       if (!info) {
-        console.error('🚫 All attempts failed. Last error:', lastError)
+        console.error('🚫 All ytdl-core attempts failed. Last error:', lastError)
         
-        const error = lastError as { statusCode?: number; message?: string }
-        const errorMessage = error.message || 'Unknown error'
+        // Since ytdl-core failed, let's try youtube-dl-exec immediately
+        console.log('🔄 ytdl-core failed completely, trying youtube-dl-exec for video info...')
         
-        // Enhanced error detection with debugging info
-        console.log('🔍 Error details:', { statusCode: error.statusCode, message: errorMessage })
-        
-        if (error.statusCode === 410 || errorMessage.includes('Video unavailable')) {
-          throw new Error('⚠️ Video unavailable: This video may be blocked in your region, set to private, or removed by the uploader. All YouTube access attempts failed.')
-        } else if (error.statusCode === 403 || errorMessage.includes('Sign in to confirm')) {
-          throw new Error('🔒 Access restricted: This video requires sign-in or may be age-restricted. YouTube is blocking all access attempts.')
-        } else if (error.statusCode === 404 || errorMessage.includes('Video not found')) {
-          throw new Error('❌ Video not found: Please verify the URL is correct and the video exists.')
-        } else if (errorMessage.includes('unavailable') || errorMessage.includes('private')) {
-          throw new Error('🚫 Video unavailable: The video is private, deleted, or restricted.')
-        } else if (errorMessage.includes('region')) {
-          throw new Error('🌍 Geographic restriction: This video is not available in your region.')
-        } else if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
-          throw new Error('🚦 Rate limited: YouTube is temporarily blocking requests. Please try again in a few minutes.')
-        } else if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('network')) {
-          throw new Error('🌐 Network error: Cannot connect to YouTube. Please check your internet connection.')
-        } else {
-          throw new Error(`🛑 YouTube access blocked: ${errorMessage}. This may be due to regional restrictions or YouTube's anti-bot measures.`)
+        try {
+          const youtubeDlInfo = await youtubedl(normalizedUrl, {
+            dumpSingleJson: true,
+            noCheckCertificates: true,
+            noWarnings: true,
+            addHeader: [
+              'referer:youtube.com',
+              'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            ]
+          })
+          
+          console.log('✅ youtube-dl-exec got video info successfully!')
+          
+          // Create a mock info object for compatibility
+          const dlInfo = youtubeDlInfo as { title?: string; id?: string; duration?: number }
+          info = {
+            videoDetails: {
+              title: dlInfo.title || 'Unknown Title',
+              videoId: dlInfo.id || 'unknown',
+              lengthSeconds: String(dlInfo.duration || 0),
+              isPrivate: false,
+              isLiveContent: false
+            },
+            formats: [] // We'll download directly with youtube-dl-exec
+          }
+          
+        } catch (youtubeDlError) {
+          console.error('❌ youtube-dl-exec also failed for info:', youtubeDlError)
+          
+          const error = lastError as { statusCode?: number; message?: string }
+          const errorMessage = error.message || 'Unknown error'
+          
+          console.log('🔍 Final error details:', { statusCode: error.statusCode, message: errorMessage })
+          
+          if (error.statusCode === 410 || errorMessage.includes('Video unavailable')) {
+            throw new Error('⚠️ Video unavailable: This video may be blocked in your region, set to private, or removed by the uploader. Both access methods failed.')
+          } else if (error.statusCode === 403 || errorMessage.includes('Sign in to confirm')) {
+            throw new Error('🔒 Access restricted: This video requires sign-in or may be age-restricted. Both access methods failed.')
+          } else if (error.statusCode === 404 || errorMessage.includes('Video not found')) {
+            throw new Error('❌ Video not found: Please verify the URL is correct and the video exists.')
+          } else if (errorMessage.includes('unavailable') || errorMessage.includes('private')) {
+            throw new Error('🚫 Video unavailable: The video is private, deleted, or restricted.')
+          } else if (errorMessage.includes('region')) {
+            throw new Error('🌍 Geographic restriction: This video is not available in your region.')
+          } else if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
+            throw new Error('🚦 Rate limited: YouTube is temporarily blocking requests. Please try again in a few minutes.')
+          } else if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('network')) {
+            throw new Error('🌐 Network error: Cannot connect to YouTube. Please check your internet connection.')
+          } else {
+            throw new Error(`🛑 All YouTube access methods failed: ${errorMessage}. Video may be completely inaccessible.`)
+          }
         }
       }
 
@@ -188,63 +220,79 @@ export async function POST(request: NextRequest) {
 
       // Enhanced format selection with multiple fallbacks
       let audioFormat
+      let useYoutubeDlExec = false
       
-      // Check if formats are available
+      // Check if we're already using youtube-dl-exec (formats array will be empty)
       if (!info.formats || info.formats.length === 0) {
-        throw new Error('🎵 No audio formats: This video has no downloadable audio streams available.')
-      }
-
-      try {
-        // Try to get highest quality audio-only format
-        audioFormat = ytdl.chooseFormat(info.formats, { 
-          quality: 'highestaudio',
-          filter: 'audioonly'
-        })
-      } catch {
+        console.log('🔄 No formats available from ytdl-core, will use youtube-dl-exec directly')
+        useYoutubeDlExec = true
+        audioFormat = null // Skip format selection
+      } else {
         try {
-          // Fallback: any format with audio (may include video)
+          // Try to get highest quality audio-only format
           audioFormat = ytdl.chooseFormat(info.formats, { 
-            filter: format => format.hasAudio && !format.hasVideo
+            quality: 'highestaudio',
+            filter: 'audioonly'
           })
         } catch {
           try {
-            // Last resort: any format with audio (including video formats)
+            // Fallback: any format with audio (may include video)
             audioFormat = ytdl.chooseFormat(info.formats, { 
-              filter: format => format.hasAudio
+              filter: format => format.hasAudio && !format.hasVideo
             })
           } catch {
-            throw new Error('🔇 No audio available: This video contains no downloadable audio streams.')
+            try {
+              // Last resort: any format with audio (including video formats)
+              audioFormat = ytdl.chooseFormat(info.formats, { 
+                filter: format => format.hasAudio
+              })
+            } catch {
+              console.log('� No suitable formats found with ytdl-core, switching to youtube-dl-exec')
+              useYoutubeDlExec = true
+              audioFormat = null
+            }
           }
         }
-      }
-
-      if (!audioFormat) {
-        throw new Error('🚫 Audio extraction failed: Could not find a suitable audio format for this video.')
       }
 
       console.log('Downloading audio:', {
         title: info.videoDetails.title,
         duration: `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}`,
-        format: audioFormat.container || 'unknown',
-        quality: audioFormat.audioBitrate || 'unknown'
+        format: audioFormat?.container || 'youtube-dl-exec',
+        quality: audioFormat?.audioBitrate || 'auto'
       })
 
-      // Try ytdl-core first, then fallback to youtube-dl-exec
+      // Choose download method based on available formats
       let fileBuffer: Buffer
       
-      try {
-        console.log('🎵 Downloading with ytdl-core...')
+      if (useYoutubeDlExec || !audioFormat) {
+        console.log('🎵 Downloading directly with youtube-dl-exec...')
         
-        // Create audio stream with additional options
-        const audioStream = ytdl(normalizedUrl, { 
-          format: audioFormat,
-          quality: 'highestaudio',
-          requestOptions: {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        // Use youtube-dl-exec directly
+        const fallbackFileName = `direct_${Date.now()}.mp3`
+        const fallbackPath = path.join(tempDir, fallbackFileName)
+        
+        await downloadWithYoutubeDL(normalizedUrl, fallbackPath)
+        fileBuffer = await fs.readFile(fallbackPath)
+        
+        // Clean up the fallback file
+        await fs.unlink(fallbackPath).catch(() => {})
+        console.log('✅ youtube-dl-exec direct download successful!')
+        
+      } else {
+        try {
+          console.log('🎵 Downloading with ytdl-core...')
+          
+          // Create audio stream with additional options
+          const audioStream = ytdl(normalizedUrl, { 
+            format: audioFormat,
+            quality: 'highestaudio',
+            requestOptions: {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              }
             }
-          }
-        })
+          })
 
         // Collect audio data in memory
         const chunks: Buffer[] = []
@@ -292,7 +340,9 @@ export async function POST(request: NextRequest) {
         } catch (fallbackError) {
           throw new Error(`Both download methods failed. Primary: ${downloadError}. Fallback: ${fallbackError}`)
         }
+        }
       }
+      
       const fileSizeBytes = fileBuffer.length
 
       console.log('Audio downloaded:', {
