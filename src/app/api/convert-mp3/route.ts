@@ -2,12 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-client'
 import { createServiceRoleClient, generateMp3FileName, getStorageUrl } from '@/lib/supabase-server'
 import { promises as fs } from 'fs'
-import { exec } from 'child_process'
-import { promisify } from 'util'
 import path from 'path'
 import os from 'os'
-
-const execAsync = promisify(exec)
+import ytdl from 'ytdl-core'
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,46 +38,72 @@ export async function POST(request: NextRequest) {
       const tempDir = path.join(os.tmpdir(), 'radio-cafe-conversion')
       await fs.mkdir(tempDir, { recursive: true })
 
-      // Generate unique filename for Supabase Storage
-      const filename = generateMp3FileName(track)
-      const tempFilePath = path.join(tempDir, filename)
+      // Generate unique filename for Supabase Storage (we'll use the original audio format)
+      const baseFilename = generateMp3FileName(track)
+      const filename = baseFilename // Keep as .mp3 for consistency in the UI
 
-      // Download and convert to MP3 using python3 -m yt_dlp
-      const ytDlpCommand = [
-        'python3', '-m', 'yt_dlp',
-        `"${track.youtube_url}"`,
-        '--extract-audio',
-        '--audio-format', 'mp3',
-        '--audio-quality', '192K',
-        '--output', `"${tempFilePath.replace('.mp3', '.%(ext)s')}"`,
-        '--no-playlist'
-      ].join(' ')
-
-      console.log('Executing yt-dlp command:', ytDlpCommand)
-      
-      try {
-        await execAsync(ytDlpCommand, { 
-          cwd: tempDir,
-          timeout: 300000 // 5 minute timeout
-        })
-      } catch (execError) {
-        console.error('yt-dlp execution error:', execError)
-        throw new Error(`Video download failed: ${execError instanceof Error ? execError.message : 'Unknown error'}`)
+      // Validate YouTube URL
+      if (!ytdl.validateURL(track.youtube_url)) {
+        throw new Error('Invalid YouTube URL')
       }
 
-      // Read the file as buffer for upload
-      const fileBuffer = await fs.readFile(tempFilePath)
+      // Get video info for duration and quality
+      const info = await ytdl.getInfo(track.youtube_url)
+      const duration = Math.round(info.videoDetails.lengthSeconds ? parseInt(info.videoDetails.lengthSeconds) : 0)
+
+      // Download audio stream (highest quality audio)
+      const audioFormat = ytdl.chooseFormat(info.formats, { 
+        quality: 'highestaudio',
+        filter: 'audioonly'
+      })
+
+      if (!audioFormat) {
+        throw new Error('No audio format available for this video')
+      }
+
+      console.log('Downloading audio:', {
+        title: info.videoDetails.title,
+        duration: duration,
+        format: audioFormat.container
+      })
+
+      // Create audio stream
+      const audioStream = ytdl(track.youtube_url, { 
+        format: audioFormat,
+        quality: 'highestaudio'
+      })
+
+      // Collect audio data in memory
+      const chunks: Buffer[] = []
+      
+      await new Promise<void>((resolve, reject) => {
+        audioStream.on('data', (chunk: Buffer) => {
+          chunks.push(chunk)
+        })
+        
+        audioStream.on('end', () => {
+          resolve()
+        })
+        
+        audioStream.on('error', (error) => {
+          reject(new Error(`Audio download failed: ${error.message}`))
+        })
+
+        // Add timeout
+        setTimeout(() => {
+          audioStream.destroy()
+          reject(new Error('Download timeout (5 minutes)'))
+        }, 300000) // 5 minutes
+      })
+
+      // Combine all chunks into single buffer
+      const fileBuffer = Buffer.concat(chunks)
       const fileSizeBytes = fileBuffer.length
 
-      // Get audio duration using yt-dlp info command
-      let duration = 0
-      try {
-        const infoCommand = `python3 -m yt_dlp --print duration "${track.youtube_url}"`
-        const { stdout } = await execAsync(infoCommand, { timeout: 60000 })
-        duration = Math.round(parseFloat(stdout.trim()) || 0)
-      } catch (infoError) {
-        console.warn('Failed to get duration, using 0:', infoError)
-      }
+      console.log('Audio downloaded:', {
+        size: `${Math.round(fileSizeBytes / 1024 / 1024 * 100) / 100} MB`,
+        duration: `${duration}s`
+      })
 
       // Upload to Supabase Storage
       const storageClient = createServiceRoleClient()
@@ -98,12 +121,7 @@ export async function POST(request: NextRequest) {
       // Generate public URL
       const publicUrl = getStorageUrl(filename)
 
-      // Clean up temporary file
-      try {
-        await fs.unlink(tempFilePath)
-      } catch (cleanupError) {
-        console.warn('Failed to clean up temp file:', cleanupError)
-      }
+      // No temp file cleanup needed since we used in-memory processing
 
       // Update database with success
       await supabase
