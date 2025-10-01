@@ -12,14 +12,20 @@ export async function POST(request: NextRequest) {
 
     console.log('🔍 Testing YouTube access for:', url)
     
-    // Normalize URL
+    // Use URL as-is (minimal validation only)
     let normalizedUrl = url.trim()
-    if (!normalizedUrl.startsWith('http')) {
+    
+    // Only add https:// if URL doesn't start with any protocol
+    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
       normalizedUrl = `https://${normalizedUrl}`
     }
-    if (normalizedUrl.includes('youtu.be/')) {
-      const videoId = normalizedUrl.split('youtu.be/')[1].split('?')[0]
-      normalizedUrl = `https://www.youtube.com/watch?v=${videoId}`
+    
+    // Convert youtu.be to full YouTube URL only if needed
+    if (normalizedUrl.includes('youtu.be/') && !normalizedUrl.includes('youtube.com')) {
+      const videoId = normalizedUrl.split('youtu.be/')[1]?.split('?')[0]
+      if (videoId) {
+        normalizedUrl = `https://www.youtube.com/watch?v=${videoId}`
+      }
     }
 
     const results = {

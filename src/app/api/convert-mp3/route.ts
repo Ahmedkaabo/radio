@@ -68,16 +68,16 @@ export async function POST(request: NextRequest) {
       const baseFilename = generateMp3FileName(track)
       const filename = baseFilename // Keep as .mp3 for consistency in the UI
 
-      // Normalize and validate YouTube URL
+      // Use YouTube URL as-is from database (minimal validation only)
       let normalizedUrl = track.youtube_url.trim()
       
-      // Add https:// if missing
+      // Only add https:// if URL doesn't start with any protocol
       if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
         normalizedUrl = 'https://' + normalizedUrl
       }
       
-      // Convert shortened URLs to full URLs
-      if (normalizedUrl.includes('youtu.be/')) {
+      // Convert youtu.be to full YouTube URL only if needed
+      if (normalizedUrl.includes('youtu.be/') && !normalizedUrl.includes('youtube.com')) {
         const videoId = normalizedUrl.split('youtu.be/')[1]?.split('?')[0]
         if (videoId) {
           normalizedUrl = `https://www.youtube.com/watch?v=${videoId}`
@@ -90,8 +90,9 @@ export async function POST(request: NextRequest) {
         throw new Error('Invalid YouTube URL format. Please use a valid YouTube video URL.')
       }
 
-      // Debug: Log the normalized URL
-      console.log('🔍 Attempting to access video:', normalizedUrl)
+      // Debug: Log the URL transformation
+      console.log('🔍 Original URL from database:', track.youtube_url)
+      console.log('🔍 Normalized URL for processing:', normalizedUrl)
       
       // Get video info with multiple retry strategies
       let info
