@@ -5,7 +5,6 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
 import YTDlpWrap from 'yt-dlp-wrap'
-import ytdl from '@distube/ytdl-core'
 
 export async function POST(request: NextRequest) {
   // Store original working directory
@@ -64,218 +63,98 @@ export async function POST(request: NextRequest) {
       
 
 
-      // Advanced YouTube download with multiple methods and retry logic
-      console.log('🎵 Starting advanced YouTube audio extraction with retry logic...')
+      // Server-optimized yt-dlp download (single method)
+      console.log('🎵 Starting server-optimized yt-dlp audio extraction...')
       
       let audioData: Buffer | null = null
       let videoInfo: { title: string; duration: string } | null = null
-      let downloadMethod = 'unknown'
+      const downloadMethod = 'yt-dlp'
 
-      // Retry function with exponential backoff
-      const retryWithBackoff = async <T>(
-        fn: () => Promise<T>, 
-        maxRetries: number = 3, 
-        baseDelay: number = 1000
-      ): Promise<T> => {
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-          try {
-            return await fn()
-          } catch (error) {
-            if (attempt === maxRetries) throw error
-            const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000
-            console.log(`⏳ Retry ${attempt}/${maxRetries} in ${Math.round(delay)}ms...`)
-            await new Promise(resolve => setTimeout(resolve, delay))
-          }
-        }
-        throw new Error('Max retries exceeded')
-      }
-
-      // Method 1: yt-dlp (most reliable and actively maintained)
+      const ytDlpWrap = new YTDlpWrap()
+      
+      // Server-optimized yt-dlp configuration for production
+      const outputTemplate = path.join(tempDir, `${filename}.%(ext)s`)
+      
+      // Detect server environment for optimization
+      const isVercel = process.env.VERCEL === '1'
+      const isNetlify = process.env.NETLIFY === 'true'
+      const isServerless = isVercel || isNetlify || process.env.AWS_LAMBDA_FUNCTION_NAME
+      
+      const ytDlpOptions = [
+        youtubeUrl,
+        '--extract-audio',
+        '--audio-format', 'mp3',
+        '--audio-quality', isServerless ? '5' : '0', // Slightly lower quality for serverless speed
+        '--no-playlist',
+        '--max-duration', '1800', // 30 minutes max
+        '--output', outputTemplate,
+        // Production server headers
+        '--user-agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        '--referer', 'https://www.youtube.com/',
+        '--no-check-certificates',
+        '--no-warnings',
+        '--prefer-free-formats',
+        '--add-header', 'Accept-Language:en-US,en;q=0.9',
+        '--add-header', 'Accept-Encoding:gzip, deflate, br',
+        '--add-header', 'Cache-Control:no-cache',
+        '--add-header', 'Pragma:no-cache',
+        // Serverless optimizations
+        '--extractor-retries', isServerless ? '2' : '5',
+        '--fragment-retries', isServerless ? '2' : '5',
+        '--retry-sleep', isServerless ? 'linear=1' : 'exp=1:5',
+        '--socket-timeout', isServerless ? '15' : '30',
+        '--geo-bypass'
+      ]
+      
+      console.log('🌐 Server environment:', { isVercel, isNetlify, isServerless })
+      
+      console.log('🔄 Running server-optimized yt-dlp...')
+      console.log('📋 Options:', ytDlpOptions.slice(1).join(' '))
+      
       try {
-        console.log('📡 Trying yt-dlp (Method 1 - Most Reliable)...')
+        await ytDlpWrap.exec(ytDlpOptions)
         
-        await retryWithBackoff(async () => {
-          const ytDlpWrap = new YTDlpWrap()
-          
-          // Create output template for MP3
-          const outputTemplate = path.join(tempDir, `${filename}.%(ext)s`)
-          
-          const ytDlpOptions = [
-            youtubeUrl,
-            '--extract-audio',
-            '--audio-format', 'mp3',
-            '--audio-quality', '0', // best quality
-            '--no-playlist',
-            '--max-duration', '1800', // 30 minutes max
-            '--output', outputTemplate,
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            '--cookies-from-browser', 'chrome', // Use Chrome cookies for better success rate
-            '--extractor-retries', '3',
-            '--fragment-retries', '3',
-            '--retry-sleep', 'linear=2',
-            '--no-check-certificates'
-          ]
-          
-          console.log('🔄 Running yt-dlp with options:', ytDlpOptions.slice(1).join(' '))
-          await ytDlpWrap.exec(ytDlpOptions)
-          
-          // Find the downloaded file
-          const files = await fs.readdir(tempDir)
-          const downloadedFile = files.find(f => f.includes(filename) && f.endsWith('.mp3'))
-          
-          if (!downloadedFile) {
-            throw new Error('yt-dlp completed but MP3 file not found')
+        // Find the downloaded file
+        const files = await fs.readdir(tempDir)
+        console.log('📁 Files in temp dir:', files)
+        
+        const downloadedFile = files.find(f => f.includes(filename) && f.endsWith('.mp3'))
+        
+        if (!downloadedFile) {
+          // Look for any MP3 file if exact match not found
+          const anyMp3File = files.find(f => f.endsWith('.mp3'))
+          if (anyMp3File) {
+            console.log('� Using alternative MP3 file:', anyMp3File)
+            audioData = await fs.readFile(path.join(tempDir, anyMp3File))
+          } else {
+            throw new Error(`yt-dlp completed but no MP3 file found. Available files: ${files.join(', ')}`)
           }
-          
+        } else {
           audioData = await fs.readFile(path.join(tempDir, downloadedFile))
-          downloadMethod = 'yt-dlp'
-          videoInfo = { title: track.title || 'Unknown', duration: 'unknown' }
-          console.log('✅ Success with yt-dlp!')
-        })
+        }
+        
+        videoInfo = { title: track.title || 'Unknown', duration: 'extracted' }
+        console.log('✅ Success with server-optimized yt-dlp!')
         
       } catch (ytDlpError) {
-        console.log('❌ yt-dlp failed:', ytDlpError instanceof Error ? ytDlpError.message : 'Unknown error')
+        console.error('❌ yt-dlp failed with error:', ytDlpError)
         
-        // Method 2: Fallback to @distube/ytdl-core with enhanced configuration
-        try {
-          console.log('📡 Trying @distube/ytdl-core (Method 2 - Enhanced Fallback)...')
-          
-          await retryWithBackoff(async () => {
-            // Enhanced ytdl-core configuration
-            const enhancedYtdlOptions = {
-              requestOptions: {
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                  'Accept': '*/*',
-                  'Accept-Language': 'en-US,en;q=0.9',
-                  'Accept-Encoding': 'gzip, deflate, br',
-                  'Connection': 'keep-alive',
-                  'Sec-Fetch-Dest': 'empty',
-                  'Sec-Fetch-Mode': 'cors',
-                  'Sec-Fetch-Site': 'same-origin',
-                  'Cache-Control': 'no-cache',
-                  'Pragma': 'no-cache'
-                }
-              }
-            }
-            
-            // Set environment for ytdl-core
-            process.env.YTDL_NO_UPDATE = 'true'
-            process.env.YTDL_CACHE_DIR = tempDir
-            
-            const info = await ytdl.getInfo(youtubeUrl, enhancedYtdlOptions)
-            
-            // Basic validation
-            if (!info.videoDetails) {
-              throw new Error('Video information not available')
-            }
-
-            // Check duration (max 30 minutes)
-            const duration = parseInt(info.videoDetails.lengthSeconds || '0')
-            if (duration > 1800) {
-              throw new Error('Video is too long (maximum 30 minutes allowed)')
-            }
-
-            videoInfo = {
-              title: info.videoDetails.title,
-              duration: `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}`
-            }
-
-            // Download audio using @distube/ytdl-core
-            const audioStream = ytdl(youtubeUrl, { 
-              filter: 'audioonly',
-              quality: 'highestaudio',
-              ...enhancedYtdlOptions
-            })
-
-            // Collect audio data in memory with timeout
-            const chunks: Buffer[] = []
-            
-            await new Promise<void>((resolve, reject) => {
-              // eslint-disable-next-line prefer-const
-              let timeoutId: NodeJS.Timeout | undefined
-              
-              const cleanup = () => {
-                if (timeoutId) clearTimeout(timeoutId)
-                audioStream.removeAllListeners()
-              }
-              
-              audioStream.on('data', (chunk: Buffer) => {
-                chunks.push(chunk)
-              })
-              
-              audioStream.on('end', () => {
-                cleanup()
-                resolve()
-              })
-              
-              audioStream.on('error', (error) => {
-                cleanup()
-                reject(new Error(`Audio download failed: ${error.message}`))
-              })
-
-              // Set timeout (3 minutes for retry logic)
-              timeoutId = setTimeout(() => {
-                cleanup()
-                audioStream.destroy()
-                reject(new Error('Download timeout (3 minutes)'))
-              }, 180000)
-            })
-
-            audioData = Buffer.concat(chunks)
-            downloadMethod = '@distube/ytdl-core (enhanced)'
-            console.log('✅ Success with enhanced @distube/ytdl-core!')
-          })
-          
-        } catch (ytdlCoreError) {
-          console.log('❌ Enhanced @distube/ytdl-core failed:', ytdlCoreError instanceof Error ? ytdlCoreError.message : 'Unknown error')
-          
-          // Method 3: Last resort - Simple ytdl-core without enhancements
-          try {
-            console.log('📡 Trying simple @distube/ytdl-core (Method 3 - Last Resort)...')
-            
-            const info = await ytdl.getInfo(youtubeUrl)
-            
-            if (!info.videoDetails) {
-              throw new Error('Video information not available')
-            }
-
-            const duration = parseInt(info.videoDetails.lengthSeconds || '0')
-            if (duration > 1800) {
-              throw new Error('Video is too long (maximum 30 minutes allowed)')
-            }
-
-            videoInfo = {
-              title: info.videoDetails.title,
-              duration: `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}`
-            }
-
-            const audioStream = ytdl(youtubeUrl, { 
-              filter: 'audioonly',
-              quality: 'highestaudio'
-            })
-
-            const chunks: Buffer[] = []
-            
-            await new Promise<void>((resolve, reject) => {
-              audioStream.on('data', (chunk: Buffer) => chunks.push(chunk))
-              audioStream.on('end', () => resolve())
-              audioStream.on('error', (error) => reject(error))
-              
-              setTimeout(() => {
-                audioStream.destroy()
-                reject(new Error('Simple download timeout'))
-              }, 120000) // 2 minutes
-            })
-
-            audioData = Buffer.concat(chunks)
-            downloadMethod = '@distube/ytdl-core (simple)'
-            console.log('✅ Success with simple @distube/ytdl-core!')
-            
-          } catch (simpleError) {
-            console.log('❌ All methods failed. Final error:', simpleError instanceof Error ? simpleError.message : 'Unknown error')
-            throw new Error(`All download methods exhausted. This video may be:\n- Age-restricted or region-blocked\n- Private or deleted\n- Protected by enhanced YouTube anti-bot measures\n- Using unsupported format\n\nLast error: ${simpleError instanceof Error ? simpleError.message : 'Unknown'}`)
-          }
+        // Enhanced error reporting for production debugging
+        const errorMessage = ytDlpError instanceof Error ? ytDlpError.message : 'Unknown error'
+        
+        // Common production error patterns
+        if (errorMessage.includes('Sign in to confirm')) {
+          throw new Error('YouTube anti-bot detection triggered. Video may require manual verification.')
+        } else if (errorMessage.includes('Video unavailable')) {
+          throw new Error('Video is unavailable, private, or deleted.')
+        } else if (errorMessage.includes('age')) {
+          throw new Error('Video is age-restricted and cannot be downloaded.')
+        } else if (errorMessage.includes('region')) {
+          throw new Error('Video is region-blocked and cannot be accessed from this server location.')
+        } else if (errorMessage.includes('live')) {
+          throw new Error('Live streams cannot be downloaded.')
+        } else {
+          throw new Error(`YouTube download failed: ${errorMessage}`)
         }
       }
 
