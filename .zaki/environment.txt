@@ -1,0 +1,109 @@
+# SYSTEM INFORMATION
+Operating System: Darwin 24.6.0
+Default Shell: /bin/zsh
+Home Directory: /Users/laptop
+Current Working Directory: /Users/laptop/Desktop/radio-cafe
+Platform: darwin
+Architecture: arm64
+Node Version: v20.19.1
+Total Memory: 8GB
+Free Memory: 0GB
+CPU Cores: 8
+
+Current Time: 10/1/2025, 6:59:38 PM (Africa/Cairo, UTC+3:00)
+
+# EDITOR STATE
+
+Visible Files:
+
+Open Tabs:
+
+# WORKSPACE SUMMARY
+
+Important Project Files:
+  package.json
+  tsconfig.json
+  .gitignore
+  README.md
+
+Files:
+  package.json
+  tsconfig.json
+  .gitignore
+  README.md
+  .DS_Store
+  .env.local
+  .eslintrc.json
+  MP3_SETUP_GUIDE.md
+  QUICKSTART.md
+  RADIO_CAFE_GUIDE.md
+  SETUP.md
+  SIMPLIFIED_ARCHITECTURE.md
+  SUPABASE_SETUP.md
+  SUPABASE_STORAGE_DEPLOYMENT.md
+  SUPABASE_STORAGE_SETUP.md
+  YTDLP_FIX.md
+  components.json
+  eslint.config.mjs
+  next-env.d.ts
+  next.config.ts
+  package-lock.json
+  postcss.config.mjs
+  public/
+  src/
+  supabase/
+  test-ytdlp.sh
+  tsconfig.tsbuildinfo
+  vercel.json
+  public/.DS_Store
+  public/file.svg
+  public/globe.svg
+  public/next.svg
+  public/sw.js
+  public/vercel.svg
+  public/window.svg
+  src/app/
+  src/components/
+  src/lib/
+  supabase/clean-schema.sql
+  supabase/fix-youtube-urls.sql
+  supabase/fresh-schema.sql
+  supabase/migration-download-features.sql
+  supabase/safe-schema-update.sql
+  supabase/schema-updates.sql
+  supabase/schema.sql
+  supabase/simplified-schema.sql
+  supabase/verify-schema.sql
+  src/components/ui/
+  src/app/admin/
+  src/app/api/
+  src/app/cafe/
+  src/app/favicon.ico
+  src/app/globals.css
+  src/app/layout.tsx
+  src/app/login/
+  src/app/page.tsx
+  src/app/test/
+  src/lib/audio-service.ts
+  src/lib/music-service.ts
+  src/lib/supabase-client.ts
+  src/lib/supabase-server.ts
+  src/lib/types.ts
+  src/lib/utils.ts
+  src/components/ui/button.tsx
+  src/components/ui/card.tsx
+  src/components/ui/input.tsx
+  src/components/ui/slider.tsx
+  src/components/ui/table.tsx
+  src/app/admin/page.tsx
+  src/app/api/cleanup-storage/
+  src/app/api/conversion-status/
+  src/app/api/convert-mp3/
+  src/app/api/test-youtube/
+  src/app/cafe/page.tsx
+  src/app/test/page.tsx
+  src/app/login/page.tsx
+  src/app/api/conversion-status/route.ts
+  src/app/api/convert-mp3/route.ts
+  src/app/api/test-youtube/route.ts
+  src/app/api/cleanup-storage/route.ts

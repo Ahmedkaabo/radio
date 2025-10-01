@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ytdl from '@distube/ytdl-core'
-import youtubedl from 'youtube-dl-exec'
+import YTDlpWrap from 'yt-dlp-wrap'
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
@@ -39,33 +39,37 @@ export async function POST(request: NextRequest) {
     process.chdir(tempDir)
     console.log('🔧 Changed working directory to:', tempDir)
 
-    // Test Method 1: youtube-dl-exec (production preferred)
+    // Test Method 1: yt-dlp (most reliable)
     try {
-      console.log('📡 Testing youtube-dl-exec (Method 1)...')
+      console.log('📡 Testing yt-dlp (Method 1 - Most Reliable)...')
       
-      await youtubedl(url, {
-        dumpSingleJson: true,
-        noPlaylist: true,
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      })
+      const ytDlpWrap = new YTDlpWrap()
+      const ytDlpResult = await ytDlpWrap.execPromise([
+        url,
+        '--dump-single-json',
+        '--no-playlist',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        '--cookies-from-browser', 'chrome',
+        '--no-check-certificates'
+      ])
       
-      result.methods.push('youtube-dl-exec')
+      const videoInfo = JSON.parse(ytDlpResult)
+      
+      result.methods.push('yt-dlp')
       result.success = true
       
       result.details = {
-        title: 'YouTube video accessible via youtube-dl-exec',
-        duration: 'Available',
+        title: videoInfo.title || 'Unknown Title',
+        duration: videoInfo.duration || 'unknown',
         isPrivate: false,
-        isLiveContent: false,
-        formatsCount: 1,
-        preferredMethod: 'youtube-dl-exec'
+        isLiveContent: videoInfo.is_live || false,
+        formatsCount: Array.isArray(videoInfo.formats) ? videoInfo.formats.length : 0,
+        preferredMethod: 'yt-dlp'
       }
-      console.log('✅ youtube-dl-exec working')
+      console.log('✅ yt-dlp working perfectly!')
       
-    } catch (youtubeDlError) {
-      console.log('❌ youtube-dl-exec failed:', youtubeDlError instanceof Error ? youtubeDlError.message : 'Unknown error')
-      
-      // Test Method 2: @distube/ytdl-core (fallback)
+      } catch (ytDlpError) {
+        console.log('❌ yt-dlp failed:', ytDlpError instanceof Error ? ytDlpError.message : 'Unknown error')      // Test Method 2: @distube/ytdl-core (fallback)
       try {
         console.log('📡 Testing @distube/ytdl-core (Method 2)...')
         
