@@ -43,10 +43,16 @@ export async function POST(request: NextRequest) {
       const baseFilename = generateMp3FileName(track)
       const filename = baseFilename
 
-      // Use YouTube URL exactly as provided - no modifications
-      const youtubeUrl = track.youtube_url
+      // Use YouTube URL exactly as provided - only add https:// if completely missing
+      let youtubeUrl = track.youtube_url.trim()
+      
+      // Only add protocol if the URL doesn't start with http:// or https://
+      if (!youtubeUrl.startsWith('http://') && !youtubeUrl.startsWith('https://')) {
+        youtubeUrl = 'https://' + youtubeUrl
+      }
 
-      console.log('🔍 Processing YouTube URL:', youtubeUrl)
+      console.log('🔍 Original URL:', track.youtube_url)
+      console.log('🔍 Processing URL:', youtubeUrl)
       
       // Get video info using @distube/ytdl-core with default settings
       const info = await ytdl.getInfo(youtubeUrl)

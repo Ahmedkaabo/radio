@@ -3,10 +3,17 @@ import ytdl from '@distube/ytdl-core'
 
 export async function POST(request: NextRequest) {
   try {
-    const { url } = await request.json()
+    const { url: rawUrl } = await request.json()
     
-    if (!url) {
+    if (!rawUrl) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 })
+    }
+
+    // Ensure URL has protocol for @distube/ytdl-core
+    let url = rawUrl
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url
+      console.log('🔧 Added protocol. Original URL vs processed:', { original: rawUrl, processed: url })
     }
 
     console.log('🔍 Testing YouTube access for:', url)
