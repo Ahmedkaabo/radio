@@ -68,17 +68,19 @@ export async function POST(request: NextRequest) {
       let info
       try {
         info = await ytdl.getInfo(normalizedUrl)
-      } catch (infoError: any) {
+      } catch (infoError: unknown) {
         console.error('Failed to get video info:', infoError)
         
-        if (infoError.statusCode === 410) {
+        const error = infoError as { statusCode?: number; message?: string }
+        
+        if (error.statusCode === 410) {
           throw new Error('This video is not available for download (blocked by YouTube). Please try a different video.')
-        } else if (infoError.statusCode === 403) {
+        } else if (error.statusCode === 403) {
           throw new Error('Access denied. This video may be private or restricted.')
-        } else if (infoError.statusCode === 404) {
+        } else if (error.statusCode === 404) {
           throw new Error('Video not found. Please check the URL and try again.')
         } else {
-          throw new Error(`Unable to access video: ${infoError.message || 'Unknown error'}`)
+          throw new Error(`Unable to access video: ${error.message || 'Unknown error'}`)
         }
       }
 
@@ -100,7 +102,7 @@ export async function POST(request: NextRequest) {
           quality: 'highestaudio',
           filter: 'audioonly'
         })
-      } catch (formatError) {
+      } catch {
         // Fallback to any audio format
         audioFormat = ytdl.chooseFormat(info.formats, { 
           filter: format => format.hasAudio && !format.hasVideo
