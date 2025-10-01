@@ -5,6 +5,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
 import ytdl from '@distube/ytdl-core'
+import youtubedl from 'youtube-dl-exec'
 
 export async function POST(request: NextRequest) {
   // Store original working directory
@@ -75,63 +76,122 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Set ytdl-core to use our writable temp directory for any cache files
-      process.env.YTDL_NO_UPDATE = 'true'
-      if (process.env.TMPDIR) {
-        process.env.YTDL_CACHE_DIR = tempDir
-      }
+      // Production-ready YouTube download with multiple fallbacks
+      console.log('🎵 Starting production YouTube audio extraction...')
       
-      // Get video info using @distube/ytdl-core with browser-like headers
-      const info = await ytdl.getInfo(youtubeUrl, ytdlOptions)
-      
-      // Basic validation
-      if (!info.videoDetails) {
-        throw new Error('Video information not available')
-      }
+      let audioData: Buffer | null = null
+      let videoInfo: { title: string; duration: string } | null = null
+      let downloadMethod = 'unknown'
 
-      // Check duration (max 30 minutes)
-      const duration = parseInt(info.videoDetails.lengthSeconds || '0')
-      if (duration > 1800) {
-        throw new Error('Video is too long (maximum 30 minutes allowed)')
-      }
-
-      console.log('Video info:', {
-        title: info.videoDetails.title,
-        duration: `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}`
-      })
-
-      // Download audio using @distube/ytdl-core with browser-like headers
-      const audioStream = ytdl(youtubeUrl, { 
-        filter: 'audioonly',
-        quality: 'highestaudio',
-        ...ytdlOptions
-      })
-
-      // Collect audio data in memory
-      const chunks: Buffer[] = []
-      
-      await new Promise<void>((resolve, reject) => {
-        audioStream.on('data', (chunk: Buffer) => {
-          chunks.push(chunk)
+      // Method 1: Try youtube-dl-exec first (more robust for production)
+      try {
+        console.log('📡 Trying youtube-dl-exec (Method 1)...')
+        
+        const outputPath = path.join(tempDir, `${filename}.%(ext)s`)
+        
+        await youtubedl(youtubeUrl, {
+          format: 'bestaudio[ext=m4a]/bestaudio/best',
+          output: outputPath,
+          extractAudio: true,
+          audioFormat: 'mp3',
+          audioQuality: 0, // best quality
+          noPlaylist: true,
+          // maxDuration handled separately - 30 minutes max
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         })
         
-        audioStream.on('end', () => {
-          resolve()
-        })
+        // Find the downloaded file
+        const files = await fs.readdir(tempDir)
+        const downloadedFile = files.find(f => f.includes(filename) && f.endsWith('.mp3'))
         
-        audioStream.on('error', (error) => {
-          reject(new Error(`Audio download failed: ${error.message}`))
-        })
+        if (downloadedFile) {
+          audioData = await fs.readFile(path.join(tempDir, downloadedFile))
+          downloadMethod = 'youtube-dl-exec'
+          videoInfo = { title: track.title || 'Unknown', duration: 'unknown' }
+          console.log('✅ Success with youtube-dl-exec')
+        } else {
+          throw new Error('Downloaded file not found')
+        }
+        
+      } catch (youtubeDlError) {
+        console.log('❌ youtube-dl-exec failed:', youtubeDlError instanceof Error ? youtubeDlError.message : 'Unknown error')
+        
+        // Method 2: Fallback to @distube/ytdl-core
+        try {
+          console.log('📡 Trying @distube/ytdl-core (Method 2)...')
+          
+          // Set environment for ytdl-core
+          process.env.YTDL_NO_UPDATE = 'true'
+          if (process.env.TMPDIR) {
+            process.env.YTDL_CACHE_DIR = tempDir
+          }
+          
+          const info = await ytdl.getInfo(youtubeUrl, ytdlOptions)
+      
+          // Basic validation
+          if (!info.videoDetails) {
+            throw new Error('Video information not available')
+          }
 
-        // Add timeout (5 minutes)
-        setTimeout(() => {
-          audioStream.destroy()
-          reject(new Error('Download timeout'))
-        }, 300000)
-      })
+          // Check duration (max 30 minutes)
+          const duration = parseInt(info.videoDetails.lengthSeconds || '0')
+          if (duration > 1800) {
+            throw new Error('Video is too long (maximum 30 minutes allowed)')
+          }
 
-      const fileBuffer = Buffer.concat(chunks)
-      const fileSizeBytes = fileBuffer.length
+          videoInfo = {
+            title: info.videoDetails.title,
+            duration: `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}`
+          }
+
+          // Download audio using @distube/ytdl-core
+          const audioStream = ytdl(youtubeUrl, { 
+            filter: 'audioonly',
+            quality: 'highestaudio',
+            ...ytdlOptions
+          })
+
+          // Collect audio data in memory
+          const chunks: Buffer[] = []
+          
+          await new Promise<void>((resolve, reject) => {
+            audioStream.on('data', (chunk: Buffer) => {
+              chunks.push(chunk)
+            })
+            
+            audioStream.on('end', () => {
+              resolve()
+            })
+            
+            audioStream.on('error', (error) => {
+              reject(new Error(`Audio download failed: ${error.message}`))
+            })
+
+            // Add timeout (5 minutes)
+            setTimeout(() => {
+              audioStream.destroy()
+              reject(new Error('Download timeout'))
+            }, 300000)
+          })
+
+          audioData = Buffer.concat(chunks)
+          downloadMethod = '@distube/ytdl-core'
+          console.log('✅ Success with @distube/ytdl-core')
+          
+        } catch (ytdlCoreError) {
+          console.log('❌ @distube/ytdl-core failed:', ytdlCoreError instanceof Error ? ytdlCoreError.message : 'Unknown error')
+          throw new Error('All download methods failed. YouTube may have changed their structure or the video may be restricted.')
+        }
+      }
+
+      if (!audioData) {
+        throw new Error('No audio data obtained from any download method')
+      }
+
+      console.log('🎵 Audio extracted successfully using:', downloadMethod)
+      console.log('📊 Video info:', videoInfo)
+
+      const fileSizeBytes = audioData.length
 
       console.log('Audio downloaded:', {
         size: `${Math.round(fileSizeBytes / 1024 / 1024 * 100) / 100} MB`
@@ -142,7 +202,7 @@ export async function POST(request: NextRequest) {
       
       const { error: uploadError } = await supabaseServiceRole.storage
         .from('mp3-files')
-        .upload(filename, fileBuffer, {
+        .upload(filename, audioData, {
           contentType: 'audio/mpeg',
           upsert: true
         })
@@ -162,7 +222,7 @@ export async function POST(request: NextRequest) {
           storage_file_name: filename,
           conversion_status: 'completed',
           file_size: fileSizeBytes,
-          duration: duration,
+          duration: videoInfo?.duration || null,
           error_message: null
         })
         .eq('id', trackId)
@@ -171,7 +231,8 @@ export async function POST(request: NextRequest) {
         success: true,
         mp3_file_path: publicUrl,
         file_size: fileSizeBytes,
-        duration: duration
+        duration: videoInfo?.duration || 'unknown',
+        method: downloadMethod
       })
 
     } catch (conversionError) {
