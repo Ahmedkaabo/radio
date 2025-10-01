@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-client'
 import { createServiceRoleClient, generateMp3FileName, getStorageUrl } from '@/lib/supabase-server'
-import YTDlpWrap from 'yt-dlp-wrap'
 import { promises as fs } from 'fs'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import path from 'path'
 import os from 'os'
+
+const execAsync = promisify(exec)
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,26 +45,42 @@ export async function POST(request: NextRequest) {
       const filename = generateMp3FileName(track)
       const tempFilePath = path.join(tempDir, filename)
 
-      // Initialize yt-dlp
-      const ytDlpWrap = new YTDlpWrap()
-
-      // Download and convert to MP3 (to temporary location)
-      await ytDlpWrap.execPromise([
-        track.youtube_url,
+      // Download and convert to MP3 using python3 -m yt_dlp
+      const ytDlpCommand = [
+        'python3', '-m', 'yt_dlp',
+        `"${track.youtube_url}"`,
         '--extract-audio',
         '--audio-format', 'mp3',
         '--audio-quality', '192K',
-        '--output', tempFilePath.replace('.mp3', '.%(ext)s'),
+        '--output', `"${tempFilePath.replace('.mp3', '.%(ext)s')}"`,
         '--no-playlist'
-      ])
+      ].join(' ')
+
+      console.log('Executing yt-dlp command:', ytDlpCommand)
+      
+      try {
+        await execAsync(ytDlpCommand, { 
+          cwd: tempDir,
+          timeout: 300000 // 5 minute timeout
+        })
+      } catch (execError) {
+        console.error('yt-dlp execution error:', execError)
+        throw new Error(`Video download failed: ${execError instanceof Error ? execError.message : 'Unknown error'}`)
+      }
 
       // Read the file as buffer for upload
       const fileBuffer = await fs.readFile(tempFilePath)
       const fileSizeBytes = fileBuffer.length
 
-      // Get audio duration using yt-dlp info
-      const info = await ytDlpWrap.getVideoInfo(track.youtube_url)
-      const duration = Math.round(info.duration || 0)
+      // Get audio duration using yt-dlp info command
+      let duration = 0
+      try {
+        const infoCommand = `python3 -m yt_dlp --print duration "${track.youtube_url}"`
+        const { stdout } = await execAsync(infoCommand, { timeout: 60000 })
+        duration = Math.round(parseFloat(stdout.trim()) || 0)
+      } catch (infoError) {
+        console.warn('Failed to get duration, using 0:', infoError)
+      }
 
       // Upload to Supabase Storage
       const storageClient = createServiceRoleClient()
