@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       const ytDlpWrap = new YTDlpWrap()
       
       // Server-optimized yt-dlp configuration for production
-      const outputTemplate = path.join(tempDir, `${filename}.%(ext)s`)
+      const outputTemplate = path.join(tempDir, 'audio-%(id)s.%(ext)s')
       
       // Detect server environment for optimization
       const isVercel = process.env.VERCEL === '1'
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
         const files = await fs.readdir(tempDir)
         console.log('📁 Files in temp dir:', files)
         
-        const downloadedFile = files.find(f => f.includes(filename) && f.endsWith('.mp3'))
+        const downloadedFile = files.find(f => f.startsWith('audio-') && f.endsWith('.mp3'))
         
         if (!downloadedFile) {
           // Look for any MP3 file if exact match not found
@@ -127,7 +127,16 @@ export async function POST(request: NextRequest) {
             console.log('� Using alternative MP3 file:', anyMp3File)
             audioData = await fs.readFile(path.join(tempDir, anyMp3File))
           } else {
-            throw new Error(`yt-dlp completed but no MP3 file found. Available files: ${files.join(', ')}`)
+            // Check for any audio files if MP3 not found
+            const audioFiles = files.filter(f => 
+              f.endsWith('.m4a') || f.endsWith('.webm') || f.endsWith('.ogg') || f.endsWith('.aac')
+            )
+            if (audioFiles.length > 0) {
+              console.log('⚠️ No MP3 found, using audio file:', audioFiles[0])
+              audioData = await fs.readFile(path.join(tempDir, audioFiles[0]))
+            } else {
+              throw new Error(`yt-dlp completed but no audio file found. Available files: ${files.join(', ')}`)
+            }
           }
         } else {
           audioData = await fs.readFile(path.join(tempDir, downloadedFile))
