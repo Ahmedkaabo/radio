@@ -5,6 +5,32 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
 import ytdl from 'ytdl-core'
+import youtubedl from 'youtube-dl-exec'
+
+// Fallback function using youtube-dl-exec
+async function downloadWithYoutubeDL(url: string, outputPath: string): Promise<void> {
+  console.log('🔄 Trying youtube-dl-exec fallback method...')
+  
+  try {
+    await youtubedl(url, {
+      extractAudio: true,
+      audioFormat: 'mp3',
+      audioQuality: 192,
+      output: outputPath,
+      noCheckCertificates: true,
+      noWarnings: true,
+      preferFreeFormats: true,
+      addHeader: [
+        'referer:youtube.com',
+        'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      ]
+    })
+    console.log('✅ youtube-dl-exec download successful!')
+  } catch (error) {
+    console.error('❌ youtube-dl-exec also failed:', error)
+    throw new Error('Both primary and fallback YouTube methods failed. This video may be restricted.')
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -64,44 +90,74 @@ export async function POST(request: NextRequest) {
         throw new Error('Invalid YouTube URL format. Please use a valid YouTube video URL.')
       }
 
-      // Get video info with better error handling and retry mechanism
+      // Debug: Log the normalized URL
+      console.log('🔍 Attempting to access video:', normalizedUrl)
+      
+      // Get video info with multiple retry strategies
       let info
-      try {
-        // Try with different user agent first
-        info = await ytdl.getInfo(normalizedUrl, {
-          requestOptions: {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-              'Accept-Language': 'en-US,en;q=0.9',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      const userAgents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      ]
+      
+      let lastError: unknown
+      
+      for (let i = 0; i < userAgents.length; i++) {
+        try {
+          console.log(`🔄 Attempt ${i + 1}/${userAgents.length} with User-Agent: ${userAgents[i].substring(0, 50)}...`)
+          
+          info = await ytdl.getInfo(normalizedUrl, {
+            requestOptions: {
+              headers: {
+                'User-Agent': userAgents[i],
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+              }
             }
+          })
+          
+          console.log('✅ Successfully retrieved video info!')
+          break
+          
+        } catch (attemptError: unknown) {
+          console.error(`❌ Attempt ${i + 1} failed:`, attemptError)
+          lastError = attemptError
+          
+          if (i < userAgents.length - 1) {
+            console.log('⏳ Waiting 2 seconds before next attempt...')
+            await new Promise(resolve => setTimeout(resolve, 2000))
           }
-        })
-      } catch (infoError: unknown) {
-        console.error('Failed to get video info:', infoError)
+        }
+      }
+      
+      if (!info) {
+        console.error('🚫 All attempts failed. Last error:', lastError)
         
-        const error = infoError as { statusCode?: number; message?: string }
+        const error = lastError as { statusCode?: number; message?: string }
         const errorMessage = error.message || 'Unknown error'
         
-        // Enhanced error detection
+        // Enhanced error detection with debugging info
+        console.log('🔍 Error details:', { statusCode: error.statusCode, message: errorMessage })
+        
         if (error.statusCode === 410 || errorMessage.includes('Video unavailable')) {
-          throw new Error('⚠️ Video unavailable: This video may be blocked in your region, set to private, or removed by the uploader.')
+          throw new Error('⚠️ Video unavailable: This video may be blocked in your region, set to private, or removed by the uploader. All YouTube access attempts failed.')
         } else if (error.statusCode === 403 || errorMessage.includes('Sign in to confirm')) {
-          throw new Error('🔒 Access restricted: This video requires sign-in or may be age-restricted.')
+          throw new Error('🔒 Access restricted: This video requires sign-in or may be age-restricted. YouTube is blocking all access attempts.')
         } else if (error.statusCode === 404 || errorMessage.includes('Video not found')) {
           throw new Error('❌ Video not found: Please verify the URL is correct and the video exists.')
         } else if (errorMessage.includes('unavailable') || errorMessage.includes('private')) {
           throw new Error('🚫 Video unavailable: The video is private, deleted, or restricted.')
         } else if (errorMessage.includes('region')) {
           throw new Error('🌍 Geographic restriction: This video is not available in your region.')
+        } else if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
+          throw new Error('🚦 Rate limited: YouTube is temporarily blocking requests. Please try again in a few minutes.')
+        } else if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('network')) {
+          throw new Error('🌐 Network error: Cannot connect to YouTube. Please check your internet connection.')
         } else {
-          // Try alternative method as fallback
-          try {
-            console.log('Retrying with minimal options...')
-            info = await ytdl.getInfo(normalizedUrl)
-          } catch {
-            throw new Error(`🛑 Unable to access video: ${errorMessage}. Please try a different YouTube video.`)
-          }
+          throw new Error(`🛑 YouTube access blocked: ${errorMessage}. This may be due to regional restrictions or YouTube's anti-bot measures.`)
         }
       }
 
@@ -173,42 +229,70 @@ export async function POST(request: NextRequest) {
         quality: audioFormat.audioBitrate || 'unknown'
       })
 
-      // Create audio stream with additional options
-      const audioStream = ytdl(normalizedUrl, { 
-        format: audioFormat,
-        quality: 'highestaudio',
-        requestOptions: {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          }
-        }
-      })
-
-      // Collect audio data in memory
-      const chunks: Buffer[] = []
+      // Try ytdl-core first, then fallback to youtube-dl-exec
+      let fileBuffer: Buffer
       
-      await new Promise<void>((resolve, reject) => {
-        audioStream.on('data', (chunk: Buffer) => {
-          chunks.push(chunk)
-        })
+      try {
+        console.log('🎵 Downloading with ytdl-core...')
         
-        audioStream.on('end', () => {
-          resolve()
-        })
-        
-        audioStream.on('error', (error) => {
-          reject(new Error(`Audio download failed: ${error.message}`))
+        // Create audio stream with additional options
+        const audioStream = ytdl(normalizedUrl, { 
+          format: audioFormat,
+          quality: 'highestaudio',
+          requestOptions: {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+          }
         })
 
-        // Add timeout
-        setTimeout(() => {
-          audioStream.destroy()
-          reject(new Error('Download timeout (5 minutes)'))
-        }, 300000) // 5 minutes
-      })
+        // Collect audio data in memory
+        const chunks: Buffer[] = []
+        
+        await new Promise<void>((resolve, reject) => {
+          audioStream.on('data', (chunk: Buffer) => {
+            chunks.push(chunk)
+          })
+          
+          audioStream.on('end', () => {
+            resolve()
+          })
+          
+          audioStream.on('error', (error) => {
+            reject(new Error(`Audio download failed: ${error.message}`))
+          })
 
-      // Combine all chunks into single buffer
-      const fileBuffer = Buffer.concat(chunks)
+          // Add timeout
+          setTimeout(() => {
+            audioStream.destroy()
+            reject(new Error('Download timeout (5 minutes)'))
+          }, 300000) // 5 minutes
+        })
+
+        // Combine all chunks into single buffer
+        fileBuffer = Buffer.concat(chunks)
+        console.log('✅ ytdl-core download successful!')
+        
+      } catch (downloadError) {
+        console.error('❌ ytdl-core download failed:', downloadError)
+        console.log('🔄 Trying youtube-dl-exec fallback...')
+        
+        // Fallback to youtube-dl-exec
+        const fallbackFileName = `fallback_${Date.now()}.mp3`
+        const fallbackPath = path.join(tempDir, fallbackFileName)
+        
+        try {
+          await downloadWithYoutubeDL(normalizedUrl, fallbackPath)
+          fileBuffer = await fs.readFile(fallbackPath)
+          
+          // Clean up the fallback file
+          await fs.unlink(fallbackPath).catch(() => {})
+          console.log('✅ youtube-dl-exec fallback successful!')
+          
+        } catch (fallbackError) {
+          throw new Error(`Both download methods failed. Primary: ${downloadError}. Fallback: ${fallbackError}`)
+        }
+      }
       const fileSizeBytes = fileBuffer.length
 
       console.log('Audio downloaded:', {
