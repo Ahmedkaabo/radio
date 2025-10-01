@@ -5,14 +5,16 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
 import ytdl from 'ytdl-core'
+import ytdlDistube from '@distube/ytdl-core'
 import youtubedl from 'youtube-dl-exec'
 
-// Fallback function using youtube-dl-exec
+// Enhanced fallback function using youtube-dl-exec with aggressive bypassing
 async function downloadWithYoutubeDL(url: string, outputPath: string): Promise<void> {
-  console.log('🔄 Trying youtube-dl-exec fallback method...')
+  console.log('🔄 Trying youtube-dl-exec with aggressive bypassing...')
   
-  try {
-    await youtubedl(url, {
+  const strategies = [
+    // Strategy 1: Basic with geo bypass
+    {
       extractAudio: true,
       audioFormat: 'mp3',
       audioQuality: 192,
@@ -20,16 +22,55 @@ async function downloadWithYoutubeDL(url: string, outputPath: string): Promise<v
       noCheckCertificates: true,
       noWarnings: true,
       preferFreeFormats: true,
+      geoBypass: true,
       addHeader: [
         'referer:youtube.com',
-        'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       ]
-    })
-    console.log('✅ youtube-dl-exec download successful!')
-  } catch (error) {
-    console.error('❌ youtube-dl-exec also failed:', error)
-    throw new Error('Both primary and fallback YouTube methods failed. This video may be restricted.')
+    },
+    // Strategy 2: With cookies and more headers
+    {
+      extractAudio: true,
+      audioFormat: 'mp3',
+      audioQuality: 128,
+      output: outputPath,
+      noCheckCertificates: true,
+      noWarnings: true,
+      preferFreeFormats: true,
+      geoBypass: true,
+      geoBypassCountry: 'US',
+      addHeader: [
+        'referer:https://www.youtube.com/',
+        'user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        'accept-language:en-US,en;q=0.9'
+      ]
+    },
+    // Strategy 3: Minimal options
+    {
+      extractAudio: true,
+      audioFormat: 'mp3',
+      output: outputPath,
+      noCheckCertificates: true,
+      ignoreErrors: true
+    }
+  ]
+  
+  for (let i = 0; i < strategies.length; i++) {
+    try {
+      console.log(`🔄 youtube-dl-exec strategy ${i + 1}/${strategies.length}`)
+      await youtubedl(url, strategies[i])
+      console.log('✅ youtube-dl-exec download successful!')
+      return
+    } catch (error) {
+      console.error(`❌ youtube-dl-exec strategy ${i + 1} failed:`, error)
+      if (i < strategies.length - 1) {
+        console.log('⏳ Waiting 3 seconds before next strategy...')
+        await new Promise(resolve => setTimeout(resolve, 3000))
+      }
+    }
   }
+  
+  throw new Error('All youtube-dl-exec strategies failed. Video may be completely inaccessible.')
 }
 
 export async function POST(request: NextRequest) {
@@ -94,42 +135,65 @@ export async function POST(request: NextRequest) {
       console.log('🔍 Original URL from database:', track.youtube_url)
       console.log('🔍 Normalized URL for processing:', normalizedUrl)
       
-      // Get video info with multiple retry strategies
+      // Get video info with aggressive retry strategies
       let info
-      const userAgents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      const strategies = [
+        // Strategy 1: Latest Chrome
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Referer': 'https://www.youtube.com/',
+            'Origin': 'https://www.youtube.com'
+          }
+        },
+        // Strategy 2: Different browser
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none'
+          }
+        },
+        // Strategy 3: Mobile browser
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+          }
+        },
+        // Strategy 4: Minimal headers
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+          }
+        }
       ]
       
       let lastError: unknown
       
-      for (let i = 0; i < userAgents.length; i++) {
+      for (let i = 0; i < strategies.length; i++) {
         try {
-          console.log(`🔄 Attempt ${i + 1}/${userAgents.length} with User-Agent: ${userAgents[i].substring(0, 50)}...`)
+          console.log(`🔄 ytdl-core attempt ${i + 1}/${strategies.length} with ${strategies[i].headers['User-Agent']?.substring(0, 50)}...`)
           
           info = await ytdl.getInfo(normalizedUrl, {
-            requestOptions: {
-              headers: {
-                'User-Agent': userAgents[i],
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache'
-              }
-            }
+            requestOptions: strategies[i]
           })
           
-          console.log('✅ Successfully retrieved video info!')
+          console.log('✅ Successfully retrieved video info with ytdl-core!')
           break
           
         } catch (attemptError: unknown) {
-          console.error(`❌ Attempt ${i + 1} failed:`, attemptError)
+          console.error(`❌ ytdl-core attempt ${i + 1} failed:`, attemptError)
           lastError = attemptError
           
-          if (i < userAgents.length - 1) {
-            console.log('⏳ Waiting 2 seconds before next attempt...')
-            await new Promise(resolve => setTimeout(resolve, 2000))
+          if (i < strategies.length - 1) {
+            console.log('⏳ Waiting 3 seconds before next attempt...')
+            await new Promise(resolve => setTimeout(resolve, 3000))
           }
         }
       }
@@ -169,27 +233,48 @@ export async function POST(request: NextRequest) {
         } catch (youtubeDlError) {
           console.error('❌ youtube-dl-exec also failed for info:', youtubeDlError)
           
-          const error = lastError as { statusCode?: number; message?: string }
-          const errorMessage = error.message || 'Unknown error'
-          
-          console.log('🔍 Final error details:', { statusCode: error.statusCode, message: errorMessage })
-          
-          if (error.statusCode === 410 || errorMessage.includes('Video unavailable')) {
-            throw new Error('⚠️ Video unavailable: This video may be blocked in your region, set to private, or removed by the uploader. Both access methods failed.')
-          } else if (error.statusCode === 403 || errorMessage.includes('Sign in to confirm')) {
-            throw new Error('🔒 Access restricted: This video requires sign-in or may be age-restricted. Both access methods failed.')
-          } else if (error.statusCode === 404 || errorMessage.includes('Video not found')) {
-            throw new Error('❌ Video not found: Please verify the URL is correct and the video exists.')
-          } else if (errorMessage.includes('unavailable') || errorMessage.includes('private')) {
-            throw new Error('🚫 Video unavailable: The video is private, deleted, or restricted.')
-          } else if (errorMessage.includes('region')) {
-            throw new Error('🌍 Geographic restriction: This video is not available in your region.')
-          } else if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
-            throw new Error('🚦 Rate limited: YouTube is temporarily blocking requests. Please try again in a few minutes.')
-          } else if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('network')) {
-            throw new Error('🌐 Network error: Cannot connect to YouTube. Please check your internet connection.')
-          } else {
-            throw new Error(`🛑 All YouTube access methods failed: ${errorMessage}. Video may be completely inaccessible.`)
+          // Try @distube/ytdl-core as final fallback
+          console.log('🔄 Trying @distube/ytdl-core as final fallback...')
+          try {
+            const distubeInfo = await ytdlDistube.getInfo(normalizedUrl, {
+              requestOptions: {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                  'Accept-Language': 'en-US,en;q=0.9'
+                }
+              }
+            })
+            
+            console.log('✅ @distube/ytdl-core got video info successfully!')
+            
+            // Use the distube info
+            info = distubeInfo
+            
+          } catch (distubeError) {
+            console.error('❌ @distube/ytdl-core also failed for info:', distubeError)
+            
+            const error = lastError as { statusCode?: number; message?: string }
+            const errorMessage = error.message || 'Unknown error'
+            
+            console.log('🔍 Final error details:', { statusCode: error.statusCode, message: errorMessage })
+            
+            if (error.statusCode === 410 || errorMessage.includes('Video unavailable')) {
+              throw new Error('⚠️ Video unavailable: This video may be blocked in your region, set to private, or removed by the uploader. All access methods failed.')
+            } else if (error.statusCode === 403 || errorMessage.includes('Sign in to confirm')) {
+              throw new Error('🔒 Access restricted: This video requires sign-in or may be age-restricted. All access methods failed.')
+            } else if (error.statusCode === 404 || errorMessage.includes('Video not found')) {
+              throw new Error('❌ Video not found: Please verify the URL is correct and the video exists.')
+            } else if (errorMessage.includes('unavailable') || errorMessage.includes('private')) {
+              throw new Error('🚫 Video unavailable: The video is private, deleted, or restricted.')
+            } else if (errorMessage.includes('region')) {
+              throw new Error('🌍 Geographic restriction: This video is not available in your region.')
+            } else if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
+              throw new Error('🚦 Rate limited: YouTube is temporarily blocking requests. Please try again in a few minutes.')
+            } else if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('network')) {
+              throw new Error('🌐 Network error: Cannot connect to YouTube. Please check your internet connection.')
+            } else {
+              throw new Error(`🛑 All YouTube access methods failed: ${errorMessage}. Video may be completely inaccessible.`)
+            }
           }
         }
       }
@@ -339,7 +424,49 @@ export async function POST(request: NextRequest) {
           console.log('✅ youtube-dl-exec fallback successful!')
           
         } catch (fallbackError) {
-          throw new Error(`Both download methods failed. Primary: ${downloadError}. Fallback: ${fallbackError}`)
+          console.error('❌ youtube-dl-exec download also failed:', fallbackError)
+          console.log('🔄 Trying @distube/ytdl-core as final download fallback...')
+          
+          // Final fallback: @distube/ytdl-core
+          try {
+            const distubeStream = ytdlDistube(normalizedUrl, { 
+              filter: 'audioonly',
+              quality: 'highestaudio',
+              requestOptions: {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+              }
+            })
+
+            const distubeChunks: Buffer[] = []
+            
+            await new Promise<void>((resolve, reject) => {
+              distubeStream.on('data', (chunk: Buffer) => {
+                distubeChunks.push(chunk)
+              })
+              
+              distubeStream.on('end', () => {
+                resolve()
+              })
+              
+              distubeStream.on('error', (error) => {
+                reject(new Error(`@distube download failed: ${error.message}`))
+              })
+
+              // Add timeout
+              setTimeout(() => {
+                distubeStream.destroy()
+                reject(new Error('Distube download timeout (5 minutes)'))
+              }, 300000)
+            })
+            
+            fileBuffer = Buffer.concat(distubeChunks)
+            console.log('✅ @distube/ytdl-core download successful!')
+            
+          } catch (distubeError) {
+            throw new Error(`All three download methods failed. ytdl-core: ${downloadError}. youtube-dl-exec: ${fallbackError}. @distube: ${distubeError}`)
+          }
         }
         }
       }
