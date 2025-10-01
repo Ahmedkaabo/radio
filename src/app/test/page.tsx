@@ -162,6 +162,29 @@ export default function TestPage() {
                   </div>
 
                   <div>
+                    <h4 className="font-semibold mb-2">@distube/ytdl-core Result</h4>
+                    <div className={`border rounded p-3 ${
+                      results.results?.distubeCore?.success ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'
+                    }`}>
+                      <p className="text-sm">
+                        <strong>Status:</strong> {results.results?.distubeCore?.success ? '✅ Success' : '❌ Failed'}
+                      </p>
+                      {results.results?.distubeCore?.error && (
+                        <p className="text-xs text-red-600 mt-1">
+                          <strong>Error:</strong> {results.results.distubeCore.error}
+                        </p>
+                      )}
+                      {results.results?.distubeCore?.details && (
+                        <div className="text-xs mt-2">
+                          <p><strong>Title:</strong> {results.results.distubeCore.details.title}</p>
+                          <p><strong>Duration:</strong> {results.results.distubeCore.details.duration}s</p>
+                          <p><strong>Formats:</strong> {results.results.distubeCore.details.formatsCount}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
                     <h4 className="font-semibold mb-2">youtube-dl-exec Result</h4>
                     <div className={`border rounded p-3 ${
                       results.results?.youtubeDlExec?.success ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'
