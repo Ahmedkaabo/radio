@@ -54,26 +54,19 @@ export default function AdminPage() {
   }, [router])
 
   const validateYouTubeUrl = (url: string): boolean => {
-    const normalizedUrl = url.trim()
+    const trimmedUrl = url.trim()
     return (
-      normalizedUrl.includes('youtube.com/watch') || 
-      normalizedUrl.includes('youtu.be/') ||
-      normalizedUrl.includes('youtube.com/embed/') ||
-      normalizedUrl.includes('m.youtube.com/watch')
+      trimmedUrl.includes('youtube.com') || 
+      trimmedUrl.includes('youtu.be/')
     )
-  }
-
-  const formatYouTubeUrl = (url: string): string => {
-    const trimmed = url.trim()
-    return trimmed.startsWith('http') ? trimmed : `https://${trimmed}`
   }
 
   const handleAddTrack = async () => {
     if (!title.trim() || !artist.trim() || !youtubeUrl.trim()) return
 
-    // Validate YouTube URL format
+    // Simple YouTube URL validation
     if (!validateYouTubeUrl(youtubeUrl)) {
-      alert('Please enter a valid YouTube URL (youtube.com/watch?v=... or youtu.be/...)')
+      alert('Please enter a valid YouTube URL')
       return
     }
 
@@ -82,7 +75,7 @@ export default function AdminPage() {
       const trackData = {
         title: title.trim(),
         artist: artist.trim(),
-        youtube_url: youtubeUrl.trim()
+        youtube_url: youtubeUrl.trim() // Store URL exactly as entered
       }
       console.log('🎵 Adding track with URL:', trackData.youtube_url)
       
@@ -177,7 +170,7 @@ export default function AdminPage() {
                 onChange={(e) => setArtist(e.target.value)}
               />
               <Input
-                placeholder="YouTube URL (e.g. youtube.com/watch?v=... or youtu.be/...)"
+                placeholder="YouTube URL (paste exactly as copied)"
                 value={youtubeUrl}
                 onChange={(e) => setYoutubeUrl(e.target.value)}
               />
@@ -238,7 +231,7 @@ export default function AdminPage() {
                       </TableCell>
                       <TableCell>
                         <a 
-                          href={formatYouTubeUrl(track.youtube_url)} 
+                          href={track.youtube_url} 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline text-sm"
